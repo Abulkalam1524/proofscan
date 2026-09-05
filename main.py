@@ -1,6 +1,7 @@
 """ProofScan cli.
 
     python main.py crawl http://127.0.0.1:5001
+    python main.py scan  http://127.0.0.1:5001
 """
 import argparse
 import sys
@@ -8,6 +9,7 @@ import sys
 from proofscan.config import Scope
 from proofscan.crawler import Crawler
 from proofscan.http_client import HttpClient
+from proofscan.scanner import scan
 
 
 def cmd_crawl(args):
@@ -32,6 +34,48 @@ def cmd_crawl(args):
     return 0
 
 
+def cmd_scan(args):
+    scope = Scope.from_url(args.url, requests_per_second=args.rate,
+                           max_pages=args.max_pages)
+    print(f"Target : {args.url}\n")
+
+    with HttpClient(scope) as client:
+        report = scan(client, scope, args.url)
+
+        print(f"Crawled {report.crawl.summary()}")
+        print(f"Detector flagged {report.candidates} of them as suspicious\n")
+
+        print("CONFIRMED (proved, goes in the report)")
+        for f in report.confirmed:
+            print(f"  {f.point}")
+            print(f"      {f.reason}")
+            p = f.evidence["proof"]
+            print(f"      true : {p['true_payload']}  -> {p['true_length']} bytes")
+            print(f"      false: {p['false_payload']}  -> {p['false_length']} bytes")
+        if not report.confirmed:
+            print("  none")
+
+        if report.unconfirmed:
+            print("\nUNCONFIRMED (could not prove either way)")
+            for f in report.unconfirmed:
+                print(f"  {f.point}\n      {f.reason}")
+
+        print("\nREJECTED (false alarms, removed)")
+        for f in report.rejected:
+            print(f"  {f.point}")
+            print(f"      detector said: {f.evidence['detector_reason']}")
+            print(f"      but: {f.reason}")
+        if not report.rejected:
+            print("  none")
+
+        removed = len(report.rejected)
+        pct = (removed / report.candidates * 100) if report.candidates else 0
+        print(f"\n{report.candidates} suspicious -> {len(report.confirmed)} proved, "
+              f"{removed} false alarms removed ({pct:.0f}%)")
+        print(f"{client.request_count} requests sent")
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser(prog="proofscan")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -41,6 +85,12 @@ def main():
     crawl.add_argument("--rate", type=float, default=10.0)
     crawl.add_argument("--max-pages", type=int, default=200)
     crawl.set_defaults(func=cmd_crawl)
+
+    sc = sub.add_parser("scan", help="crawl, detect and validate")
+    sc.add_argument("url")
+    sc.add_argument("--rate", type=float, default=10.0)
+    sc.add_argument("--max-pages", type=int, default=200)
+    sc.set_defaults(func=cmd_scan)
 
     args = parser.parse_args()
     return args.func(args)

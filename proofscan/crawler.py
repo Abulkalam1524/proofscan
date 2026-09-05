@@ -13,6 +13,7 @@ class InjectionPoint:
     param: str
     source: str                       # "query" or "form"
     other_params: tuple = field(default=())
+    value: str = ""                   # the value it already had, used as a probe base
 
     def __str__(self):
         return f"{self.method} {self.url} [{self.param}] ({self.source})"
@@ -82,8 +83,9 @@ class Crawler:
         base = url.split("?", 1)[0]
         return [
             InjectionPoint(base, "GET", name, "query",
-                           tuple((k, v) for k, v in pairs if k != name))
-            for name, _ in pairs
+                           tuple((k, v) for k, v in pairs if k != name),
+                           value=val)
+            for name, val in pairs
         ]
 
     @staticmethod
@@ -103,9 +105,10 @@ class Crawler:
                     continue
                 fields.append((name, tag.get("value") or "test"))
 
-            for name, _ in fields:
+            for name, val in fields:
                 found.append(InjectionPoint(
                     action, method, name, "form",
-                    tuple((k, v) for k, v in fields if k != name)))
+                    tuple((k, v) for k, v in fields if k != name),
+                    value=val))
 
         return found
