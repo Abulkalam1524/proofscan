@@ -444,3 +444,18 @@ def test_the_plan_spiders_and_actively_scans():
     assert "type: spider" in plan
     assert "type: activeScan" in plan
     assert "maxScanDurationInMins: 25" in plan
+
+
+def test_regex_excludes_are_single_quoted_in_the_plan():
+    r"""ZAP's yaml parser refuses a backslash escape it does not know, so a
+    double quoted ".*setup\.php.*" kills the run before it starts with
+    "found unknown escape character". It cost a whole DVWA scan once.
+    """
+    from benchmark.run_zap import build_plan
+
+    plan = build_plan("http://dvwa/", "out.json")
+
+    assert r"- '.*setup\.php.*'" in plan
+    for line in plan.splitlines():
+        if r"\." in line:
+            assert '"' not in line, f"regex in a double quoted scalar: {line}"
