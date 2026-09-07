@@ -17,8 +17,9 @@ Commits so far:
 - `5464dbc` the full end to end scan numbers for both targets
 - `559df38` cvss v3.1 scoring, cwe numbers and owasp categories
 - `2e81d71` the sqlite evidence store, and scans/show/diff to read it back
+- `8c982f3` the pdf report
 
-88 tests passing, 90s for the suite.
+115 tests passing, 90s for the suite.
 
 Full scan of the test app, everything switched on, 7 Sep 2026:
 
@@ -67,6 +68,7 @@ one command apart.
 - [x] findings come back worst first, because that is the order they get fixed in
 - [x] sqlite evidence store, a scan outlives the process that ran it
 - [x] `scans`, `show` and `diff` read stored scans back without rescanning
+- [x] pdf report, printed from a stored scan, proofs and thrown out candidates
 
 ## DVWA, and the number the auth work has to beat
 
@@ -321,14 +323,78 @@ the same attribute names a live `ScanReport` has, so the report generator never
 has to know which one it was handed.
 
 
+## The pdf report
+
+Built, `proofscan/report.py` plus `proofscan/templates/report.html`. Jinja2 for
+the html, chromium's `page.pdf()` for the printing. WeasyPrint stays ruled out,
+it wants GTK on windows and does not install. Chromium was already here for the
+xss validator, and using the same renderer that draws the page to print it means
+what comes out is what the browser showed.
+
+```
+python main.py report 1            # reports/proofscan-scan-1.pdf
+python main.py report 1 --html     # keep the html beside it
+python main.py report 1 -o path.pdf
+```
+
+Scan 1 of the lab app comes out as 10 A4 pages: cover, summary, how each finding
+was proved, seven confirmed findings with their proofs, the five candidates
+thrown out with what was tried against each, scope and limitations, and an
+appendix of what was reached.
+
+**It reads a stored scan and never runs one.** A report is a claim about what was
+proved, so it is printed from the evidence that was kept rather than from a scan
+happening at the same time. `main.py report` goes through `store.load(id)` and
+there is no way to make a report without saving one first, which is the point.
+
+**Autoescaping is the whole reason a template engine is worth a dependency for
+one document.** This report prints working xss payloads on purpose, and is then
+opened in a browser to turn it into a pdf. Hand built html with one forgotten
+escape is a security report that runs the exploit it is reporting, on whoever
+opens it. Real scanners have had this bug. `test_report.py` asserts that no
+script tag can appear anywhere in the output, which passes only because every
+payload comes out as `&lt;script&gt;`.
+
+Worth keeping for the write up, three things the report does that a scanner
+report usually does not:
+
+- **Every confirmed finding shows its proof as numbers.** The two payloads, the
+  similarity against the page's own noise floor, or the medians and the ranges,
+  or the token the browser handed back. Not a severity and a paragraph.
+- **Every score says what was not proved.** The `conventional` sentence from
+  `scoring.py` goes under each finding, and Privileges Required is labelled as
+  the one metric taken from the scan rather than from the class.
+- **The thrown out candidates get written up too**, with what was sent and what
+  came back. The false alarm count is the number this project is judged on and
+  it is worth nothing without the work behind it shown.
+
+The methodology section only explains the techniques the scan actually used.
+Describing a test that never ran invites a reader to assume it was applied, and
+that matters most in safe mode, where the report says in its limitations that the
+timing tests were skipped and blind injection could not have been found.
+
+The candidate tally moved onto `FindingsView` while doing this, so the terminal
+and the pdf read the same numbers out of one place. Two things counting the same
+thing is two things that can disagree, and the pdf is the one that gets handed
+in.
+
+Test fixtures now live in `tests/samples.py`, shared by the store and the report
+tests. The evidence dicts in there are copied from real validator output, so if
+a proof shape ever changes those are what should fail first.
+
+Not done, and deliberately: no matplotlib chart, though it is in
+`requirements.txt`. The severity bars are css, which prints at any size and does
+not need a png written to disk and embedded. If a chart is wanted later that is
+where it would go.
+
 ## Next
 
-1. pdf report, via playwright `page.pdf()`, WeasyPrint is ruled out below.
-   Reads a `StoredScan` off `store.load(id)`, so it never runs a scan itself.
-2. benchmark against owasp zap on dvwa and one other target. not juice shop,
+1. benchmark against owasp zap on dvwa and one other target. not juice shop,
    it is an angular spa and the crawler does not run javascript. that is a
    stated limitation in the report, not a bug to fix in the time left.
    Store both runs and quote the diff.
+2. write the dissertation itself. Most of the argument is already in this
+   file and in the two reports the tool prints.
 
 ## Decisions made, do not redo these
 
@@ -407,6 +473,18 @@ has to know which one it was handed.
   at the time, not what today's code would decide.
 - **WeasyPrint is not installed.** It needs GTK on windows and breaks. Use
   playwright's `page.pdf()` for the report instead, chromium is already there.
+- **The report is rendered with autoescaping on and never with string
+  formatting.** It prints working payloads and is then opened in a browser.
+  Building that html by hand is one forgotten escape away from a security
+  report that attacks its own reader.
+- **The report reads a stored scan and cannot run one.** If it could re-test
+  while printing, the document and the evidence behind it would be two
+  different things.
+- **The methodology section only describes techniques the scan actually used.**
+  Explaining a test that did not run reads as a claim that it did.
+- **One place counts the candidate funnel**, `FindingsView.tally`. The terminal
+  and the pdf both read it. Two implementations of the headline number is two
+  numbers that can disagree in front of an examiner.
 - **v1 scope is fixed:** sqli (boolean + timing) and xss. IDOR, command
   injection and open redirect are phase 2. Do not expand.
 
