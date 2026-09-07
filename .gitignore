@@ -14,3 +14,8 @@ reports/*.html
 # Local settings
 .env
 .vscode/
+
+# Lab targets - big binaries, not source
+labs/webgoat/*.jar
+labs/webgoat/.webgoat*/
+labs/webgoat/*.log

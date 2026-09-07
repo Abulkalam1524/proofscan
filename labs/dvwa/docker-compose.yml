@@ -1,0 +1,42 @@
+# DVWA as a benchmark target. Two containers, because the dvwa image is only
+# the php app and expects the database to be somewhere else.
+#
+#   docker compose -f labs/dvwa/docker-compose.yml up -d
+#   http://127.0.0.1:8080          admin / password
+#
+# First run needs the database creating once, at /setup.php, button at the
+# bottom. After that the login works and the app keeps its data in the volume.
+#
+# Versions are pinned on purpose. A benchmark against a moving target is not a
+# benchmark, and the report has to say exactly what was scanned.
+services:
+  dvwa:
+    image: ghcr.io/digininja/dvwa:latest
+    # digest at the time this was written, 7 Sep 2026:
+    # sha256:38d8f4894c9ec064e42e43eaf423d55ad09a7f59cada82414217113db6129c3e
+    container_name: dvwa
+    depends_on:
+      - dvwa-db
+    environment:
+      - DB_SERVER=dvwa-db
+      - DB_DATABASE=dvwa
+      - DB_USER=dvwa
+      - DB_PASSWORD=p@ssw0rd
+    ports:
+      - "127.0.0.1:8080:80"      # localhost only, never expose this
+    restart: unless-stopped
+
+  dvwa-db:
+    image: docker.io/library/mariadb:10.11
+    container_name: dvwa-db
+    environment:
+      - MYSQL_ROOT_PASSWORD=dvwa
+      - MYSQL_DATABASE=dvwa
+      - MYSQL_USER=dvwa
+      - MYSQL_PASSWORD=p@ssw0rd
+    volumes:
+      - dvwa-db-data:/var/lib/mysql
+    restart: unless-stopped
+
+volumes:
+  dvwa-db-data:
