@@ -14,6 +14,8 @@ Commits so far:
 - `6bbb316` authentication, and stopping the scanner wrecking its own scan
 - `ebf663d` measure the page's own noise instead of guessing a threshold
 - `f95a42f` xss detector and browser validator
+- `5464dbc` the full end to end scan numbers for both targets
+- `559df38` cvss v3.1 scoring, cwe numbers and owasp categories
 
 60 tests passing, 83s for the suite.
 
@@ -120,11 +122,12 @@ inclusion, csrf, file upload, weak session ids, open redirect. `fi [page]` is a
 real file inclusion bug and gets rejected here, which is right, because it is
 not sql injection and not xss and this is a v1 scanner for those two.
 
-**Three real findings on an app I did not write, no false positives.** All three
-are genuine DVWA sql injection, and each is proved by the validator that suits
-it: the two that change the page are proved by the true/false test, the blind
-one by the clock. The timing validator, which until today had only ever been
-proved against a lab endpoint I wrote myself, works on an app I did not.
+**Six real findings on an app I did not write, no false positives.** Each is
+proved by the validator that suits it: the sql injections that change the page
+by the true/false test, the blind one by the clock, the cross site scripting by
+a browser that actually ran the script. The timing validator and the browser
+validator had, until today, only ever been proved against a lab app I wrote
+myself. They work on one I did not.
 
 `brute [password]` is found and correctly not confirmed. DVWA runs the password
 through md5 before it reaches the query, so it genuinely is not injectable. That
