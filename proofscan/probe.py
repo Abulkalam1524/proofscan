@@ -3,13 +3,17 @@ import difflib
 import html
 
 
-def send(client, point, value):
-    """Send a request with `value` in the point's parameter, others unchanged."""
+def send(client, point, value, **kwargs):
+    """Send a request with `value` in the point's parameter, others unchanged.
+
+    Anything extra goes on to the client, which is how the timing test asks for
+    a longer timeout than everything else gets.
+    """
     params = point.base_params()
     params[point.param] = value
     if point.method == "POST":
-        return client.post(point.url, data=params)
-    return client.get(point.url, params=params)
+        return client.post(point.url, data=params, **kwargs)
+    return client.get(point.url, params=params, **kwargs)
 
 
 def strip_payload(body, payload):

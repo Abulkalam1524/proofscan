@@ -9,9 +9,11 @@ Commits so far:
 - `80e0a98` initial commit - scope, http client, crawler, test app
 - `2009b91` sqli detector and true/false validator
 - `aa104c5` working notes
-- (uncommitted) timing validator, blind endpoint in the test app
+- `2ae5e9f` timing validator for blind sqli
+- `aafa5d5` dvwa as a benchmark target, and the docker fixes
+- (uncommitted) authentication and sessions
 
-17 tests passing, 44s for the suite. Latest scan of the test app:
+31 tests passing, 60s for the suite. Latest scan of the test app:
 
 ```
 10 pages, 10 injection points
@@ -42,6 +44,12 @@ one command apart.
 - [x] `/blind-product` in the test app, injectable but silent
 - [x] `--safe-mode` wired up, skips the timing tests
 - [x] accuracy tests against ANSWER_KEY
+- [x] form login, session kept, csrf tokens read off the page
+- [x] redirects followed by hand, scope checked on every hop
+- [x] logged out detection and automatic re login
+- [x] dangerous forms and links left alone, so the scan cannot wreck itself
+- [x] `--cookie` for apps that keep state there
+- [x] dvwa scanned end to end, 3 real findings, 0 false positives
 
 ## DVWA, and the number the auth work has to beat
 
@@ -57,36 +65,87 @@ python labs/dvwa/reset_dvwa.py          # admin / password, security low
 python main.py crawl http://127.0.0.1:8080
 ```
 
-First crawl of DVWA, 7 Sep 2026, before any authentication support exists:
+First crawl of DVWA, 7 Sep 2026, before any authentication support existed:
 
 ```
-Pages found (1):
-  http://127.0.0.1:8080
-Injection points (0):
 1 pages, 0 injection points in 1 requests
 ```
 
-One request, nothing found, scanner blind. `/` answers 302 to `/login.php`,
-`follow_redirects` is off, so the crawler gets a redirect with no html in it,
-finds no links and stops. **That zero is the before number.** Whatever the auth
-support turns it into is the after number, and both belong in the report.
+One request, nothing found. `/` answers 302 to `/login.php`, redirects were off,
+so the crawler got a redirect with no html in it, found no links and stopped.
+
+After the authentication work, same target, same day:
+
+```
+Crawled 48 pages, 20 injection points
+Detector flagged 6 of them as suspicious
+
+CONFIRMED
+  /vulnerabilities/brute/     [username]  timing, 10001 ms gap
+  /vulnerabilities/sqli/      [id]        true/false, similarity 0.97
+  /vulnerabilities/sqli_blind/[id]        timing, 10002 ms gap
+REJECTED
+  /vulnerabilities/fi/ [page], /instructions.php [doc],
+  /vulnerabilities/open_redirect/source/info.php [id]
+
+6 suspicious -> 3 proved, 3 false alarms removed (50%)
+320 requests
+```
+
+**Three real findings on an app I did not write, no false positives.** All three
+are genuine DVWA sql injection. Two of them needed the timing validator, which
+until today had only ever been proved against a lab endpoint I wrote myself.
+
+`brute [password]` is found and correctly not confirmed. DVWA runs the password
+through md5 before it reaches the query, so it genuinely is not injectable. That
+is a correct negative, not a miss, and it is worth saying out loud in the report
+because it looks like a miss until you read the source.
+
+## Five things DVWA broke, and what each one taught
+
+Getting from 0 to 3 took five separate fixes. Every one of them was invisible on
+the lab app and every one is worth a paragraph in the report.
+
+1. **The crawler dropped submit buttons.** DVWA's sql injection page runs no
+   query at all without `Submit=Submit`, so the response never changed and the
+   page looked safe. Named fields now all go in the payload, buttons included,
+   but buttons are still never injected into.
+2. **DVWA keeps its security level in a cookie** and hands out
+   `security=impossible` at login, which is the fully patched build. A scanner
+   that never sets the cookie is scanning an app with nothing wrong with it and
+   cannot tell. Hence `--cookie name=value`.
+3. **The scanner changed the target's admin password and locked itself out.**
+   Once submit buttons were being sent, DVWA's change password form started
+   firing, the validator's own baseline value went into both password boxes at
+   once, they matched, and the password became "test" half way through the scan.
+   Any form with two or more password boxes is now left alone.
+4. **AND payloads get short circuited away.** `user_id = 'test' AND SLEEP(2)`
+   never sleeps, because no user is called test, so the database settles the
+   answer before it reaches the sleep. Timing payloads now come in AND and OR
+   form, and the OR form is what found DVWA's blind injection.
+5. **A sleep can fire once per row.** Two seconds against five users is ten, the
+   timeout was ten, and the client hung up on a payload that was working
+   perfectly. Timing requests now get a much longer timeout, with a time budget
+   so one point cannot run away with the whole scan.
+
+Correction to an earlier note in this file: the security level being
+"impossible" was **not** the scanner posting to security.php. It is the cookie
+default, and it was read back in a fresh session both times, which made it look
+like the scan had done it. Leaving security.php alone is still right, and
+setup.php genuinely can rebuild the database mid scan, but that was not the
+evidence for it.
 
 ## Next
 
-1. **authentication and sessions** - the thing standing between ProofScan and
-   any real target. Needs a login step, a per request redirect override
-   (`follow_redirects=False` is right for detection and wrong for logging in),
-   and a logged out detector so the crawler notices when its session dies
-   halfway through instead of quietly scanning the login page 200 times.
-2. **xss detector + browser validator** - `detectors/xss.py`,
+1. **xss detector + browser validator** - `detectors/xss.py`,
    `validators/xss_browser.py`. Payload sets a unique window variable, load the
    page in headless chromium, check `window.__proof`. Must confirm `/search` and
    `/comment`, must reject `/plain`, which reflects the payload but returns
    text/plain so nothing runs. Chromium is already installed.
-3. cvss v3.1 scoring and cwe mapping
-4. sqlite evidence store
-5. pdf report
-6. benchmark against owasp zap on dvwa and one other target. not juice shop,
+2. cvss v3.1 scoring and cwe mapping
+3. sqlite evidence store
+4. pdf report
+5. benchmark against owasp zap on dvwa and one other target. not juice shop,
    it is an angular spa and the crawler does not run javascript. that is a
    stated limitation in the report, not a bug to fix in the time left.
 
@@ -130,6 +189,21 @@ support turns it into is the after number, and both belong in the report.
   request because 1 second is under the threshold, so the separation rule never
   runs there. Feeding it numbers is the only way to actually test the rule that
   does the work.
+- **Redirects are followed by hand, one hop at a time, with the scope checked on
+  every hop.** httpx will follow them internally, but then the scope check only
+  ever sees the url we asked for, and one redirect could put us on a host nobody
+  gave us permission to touch. This is the whole first principle of the project,
+  so it does not get delegated to a library.
+- **Timing payloads come in AND and OR form, always both.** Databases stop
+  evaluating as soon as the answer is settled, so AND misses when the starting
+  value matches no row and OR misses when it matches one. Which applies depends
+  on data we cannot see. Sending both is the only way to cover it.
+- **A form with two or more password boxes is never submitted.** One box is a
+  login and a fair target. Two is a form whose purpose is to change the
+  credentials we are scanning with, and it will.
+- **The scanner must not change what it is measuring.** Logout, setup, security
+  and settings pages are in scope and left alone anyway. A finding that comes
+  after the scanner has altered the target is not a finding.
 - **No ML or AI in the detection path.** The point is proof, not probability.
   If AI is added later it only rewrites report text, never decides a verdict.
 - **SQLite, not a server database.** Single file, portable, nothing to secure.

