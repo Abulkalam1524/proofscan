@@ -1,34 +1,59 @@
 """Ties the stages together: crawl, detect, then validate."""
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+
 from .crawler import Crawler
 from .detectors import sqli, xss
-from .findings import Finding, Verdict
+from .findings import Finding, FindingsView, Verdict
 from .scoring import score_finding
 from .validators import sqli_boolean, sqli_timing, xss_browser
 
 
-class ScanReport:
-    def __init__(self, crawl, findings, candidates):
-        self.crawl = crawl
-        self.findings = findings
-        self.candidates = candidates
+@dataclass
+class ScanReport(FindingsView):
+    """Everything one scan produced.
 
-    def by_verdict(self, verdict):
-        return [f for f in self.findings if f.verdict is verdict]
+    It carries the counters off the client and the settings off the scope as
+    well as the findings, rather than pointing at either. A report that has to
+    ask the client how many requests it sent cannot be written once the client
+    is closed, and the whole point of storing a scan is that it outlives the
+    process that ran it.
+    """
+    target: str
+    crawl: object
+    findings: list = field(default_factory=list)
+    candidates: int = 0
+    started_at: object = None                  # datetime, utc
+    finished_at: object = None
+    requests: int = 0
+    session_recoveries: int = 0
+    authenticated: bool = False
+    safe_mode: bool = False
 
     @property
-    def confirmed(self):
-        """Worst first, because that is the order somebody fixes them in."""
-        return sorted(self.by_verdict(Verdict.CONFIRMED),
-                      key=lambda f: (-(f.score.cvss_score if f.score else 0.0),
-                                     f.point.url, f.point.param))
+    def duration_seconds(self):
+        if self.started_at is None or self.finished_at is None:
+            return 0.0
+        return (self.finished_at - self.started_at).total_seconds()
 
     @property
-    def unconfirmed(self):
-        return self.by_verdict(Verdict.UNCONFIRMED)
+    def pages(self):
+        return len(self.crawl.pages)
 
     @property
-    def rejected(self):
-        return self.by_verdict(Verdict.REJECTED)
+    def injection_points(self):
+        return len(self.crawl.injection_points)
+
+    @property
+    def page_urls(self):
+        return list(self.crawl.pages)
+
+    @property
+    def avoided_urls(self):
+        return list(self.crawl.avoided)
+
+    def summary(self):
+        return f"{self.pages} pages, {self.injection_points} injection points"
 
 
 def _scan_sqli(client, scope, points):
@@ -95,6 +120,8 @@ def _scan_xss(client, scope, points, base_url):
 
 
 def scan(client, scope, start_url):
+    started_at = datetime.now(timezone.utc)
+
     crawl = Crawler(client, scope).crawl(start_url)
 
     sqli_findings, sqli_candidates = _scan_sqli(client, scope, crawl.injection_points)
@@ -111,4 +138,15 @@ def scan(client, scope, start_url):
         if finding.verdict is Verdict.CONFIRMED:
             finding.score = score_finding(finding.kind, needed_login)
 
-    return ScanReport(crawl, findings, sqli_candidates + xss_candidates)
+    return ScanReport(
+        target=start_url,
+        crawl=crawl,
+        findings=findings,
+        candidates=sqli_candidates + xss_candidates,
+        started_at=started_at,
+        finished_at=datetime.now(timezone.utc),
+        requests=client.request_count,
+        session_recoveries=client.session_recoveries,
+        authenticated=needed_login,
+        safe_mode=scope.safe_mode,
+    )

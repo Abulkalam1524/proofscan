@@ -42,7 +42,7 @@ Phase 1, in progress.
 - [x] detectors, sql injection and cross site scripting
 - [x] validators, true/false, timing and headless browser
 - [x] cvss v3.1 scoring, cwe and owasp mapping
-- [ ] evidence store
+- [x] evidence store
 - [ ] pdf report
 - [ ] benchmark against zap
 
@@ -67,6 +67,15 @@ Crawl it from another:
 
 ```
 python main.py crawl http://127.0.0.1:5001
+```
+
+Every scan is written to `evidence/proofscan.db`, and can be read back
+without running the target again:
+
+```
+python main.py scans          # every scan in the file
+python main.py show 1         # one scan, findings and proofs
+python main.py diff 1 2       # what was fixed, what is new, what is still there
 ```
 
 Tests:

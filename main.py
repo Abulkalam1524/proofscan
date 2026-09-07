@@ -7,6 +7,12 @@ Behind a login:
 
     set PROOFSCAN_PASSWORD=password
     python main.py scan http://127.0.0.1:8080 --login-url http://127.0.0.1:8080/login.php --username admin
+
+Every scan is stored. Reading them back:
+
+    python main.py scans              # what is in the file
+    python main.py show 3             # one scan, printed from the file
+    python main.py diff 2 3           # what moved between two scans
 """
 import argparse
 import os
@@ -17,6 +23,7 @@ from proofscan.config import Scope
 from proofscan.crawler import Crawler
 from proofscan.http_client import HttpClient
 from proofscan.scanner import scan
+from proofscan.store import DEFAULT_PATH, EvidenceStore, compare
 
 
 def add_login_args(parser):
@@ -31,6 +38,11 @@ def add_login_args(parser):
                         help="send a cookie with every request, repeatable. some "
                              "apps keep state here, eg DVWA needs security=low or "
                              "it serves the fully patched build")
+
+
+def add_db_arg(parser):
+    parser.add_argument("--db", default=str(DEFAULT_PATH), metavar="PATH",
+                        help=f"evidence file to use (default {DEFAULT_PATH})")
 
 
 def build_cookies(args):
@@ -72,6 +84,69 @@ def sign_in(client, auth):
         return False
     print("         ok")
     return True
+
+
+def print_findings(report):
+    """The three verdict blocks.
+
+    Takes a live scan report or one loaded back out of the evidence store,
+    without knowing which. If the stored copy cannot produce this same output
+    then the store lost something on the way in.
+    """
+    print("CONFIRMED (proved, goes in the report, worst first)")
+    for f in report.confirmed:
+        print(f"  [{f.kind}] {f.point}")
+        if f.score:
+            print(f"      {f.score.cvss_score} {f.score.severity}  "
+                  f"{f.score.cwe}  {f.score.owasp}")
+            print(f"      {f.score.cvss_vector}")
+        print(f"      {f.reason}")
+        p = f.evidence["proof"]
+        if f.kind == "xss":
+            print(f"      payload: {p['payload']}")
+            print(f"      {p['variable']} came back as {p['read_back']}")
+        elif f.evidence.get("technique") == "timing":
+            print(f"      true : {p['true_payload']}")
+            print(f"             -> {p['true_median_ms']:.0f} ms median, "
+                  f"fastest {p['true_min_ms']:.0f} ms")
+            print(f"      false: {p['false_payload']}")
+            print(f"             -> {p['false_median_ms']:.0f} ms median, "
+                  f"slowest {p['false_max_ms']:.0f} ms")
+        else:
+            print(f"      true : {p['true_payload']}  -> {p['true_length']} bytes")
+            print(f"      false: {p['false_payload']}  -> {p['false_length']} bytes")
+    if not report.confirmed:
+        print("  none")
+
+    if report.unconfirmed:
+        print("\nUNCONFIRMED (could not prove either way)")
+        for f in report.unconfirmed:
+            print(f"  [{f.kind}] {f.point}\n      {f.reason}")
+
+    print("\nREJECTED (false alarms, removed)")
+    for f in report.rejected:
+        print(f"  [{f.kind}] {f.point}")
+        print(f"      detector said: {f.evidence.get('detector_reason')}")
+        print(f"      but: {f.reason}")
+    if not report.rejected:
+        print("  none")
+
+
+def print_tally(report):
+    # findings the detector never flagged are the blind ones, caught by the
+    # clock alone. counting them as candidates would flatter the percentage.
+    from_detector = [f for f in report.confirmed if f.evidence.get("detector_reason")]
+    blind = len(report.confirmed) - len(from_detector)
+
+    removed = len(report.rejected)
+    pct = (removed / report.candidates * 100) if report.candidates else 0
+    print(f"\n{report.candidates} suspicious -> {len(from_detector)} proved, "
+          f"{removed} false alarms removed ({pct:.0f}%)")
+    if blind:
+        print(f"plus {blind} the detector could not see, proved by the timing test")
+    print(f"{report.requests} requests sent")
+    if report.session_recoveries:
+        print(f"session expired and was restored {report.session_recoveries} time(s)")
 
 
 def cmd_crawl(args):
@@ -132,61 +207,114 @@ def cmd_scan(args):
 
         report = scan(client, scope, args.url)
 
-        print(f"Crawled {report.crawl.summary()}")
-        print(f"Detector flagged {report.candidates} of them as suspicious\n")
+    # everything below comes off the report rather than the client, which is why
+    # it can run out here with the connection already closed, and why the same
+    # report can be written to a file and printed again next week
+    print(f"Crawled {report.summary()}")
+    print(f"Detector flagged {report.candidates} of them as suspicious\n")
 
-        print("CONFIRMED (proved, goes in the report, worst first)")
-        for f in report.confirmed:
-            print(f"  [{f.kind}] {f.point}")
-            if f.score:
-                print(f"      {f.score.cvss_score} {f.score.severity}  "
-                      f"{f.score.cwe}  {f.score.owasp}")
-                print(f"      {f.score.cvss_vector}")
-            print(f"      {f.reason}")
-            p = f.evidence["proof"]
-            if f.kind == "xss":
-                print(f"      payload: {p['payload']}")
-                print(f"      {p['variable']} came back as {p['read_back']}")
-            elif f.evidence.get("technique") == "timing":
-                print(f"      true : {p['true_payload']}")
-                print(f"             -> {p['true_median_ms']:.0f} ms median, "
-                      f"fastest {p['true_min_ms']:.0f} ms")
-                print(f"      false: {p['false_payload']}")
-                print(f"             -> {p['false_median_ms']:.0f} ms median, "
-                      f"slowest {p['false_max_ms']:.0f} ms")
-            else:
-                print(f"      true : {p['true_payload']}  -> {p['true_length']} bytes")
-                print(f"      false: {p['false_payload']}  -> {p['false_length']} bytes")
-        if not report.confirmed:
+    print_findings(report)
+    print_tally(report)
+
+    if args.no_save:
+        print("\nNot saved (--no-save)")
+    else:
+        with EvidenceStore(args.db) as store:
+            scan_id = store.save(report)
+        print(f"\nSaved as scan {scan_id} in {args.db}")
+
+    return 0
+
+
+def cmd_scans(args):
+    with EvidenceStore(args.db) as store:
+        rows = store.scans()
+
+    if not rows:
+        print(f"No scans stored in {args.db} yet.")
+        return 0
+
+    print(f"{args.db}, {len(rows)} scan(s)\n")
+    print(f"{'id':>3}  {'when (utc)':19}  {'took':>6}  {'req':>5}  "
+          f"{'conf':>4} {'unc':>4} {'rej':>4}  target")
+    for s in rows:
+        notes = []
+        if s.authenticated:
+            notes.append("login")
+        if s.safe_mode:
+            notes.append("safe mode")
+        suffix = f"  ({', '.join(notes)})" if notes else ""
+        print(f"{s.id:>3}  {s.started_at[:19]:19}  {s.duration_seconds:>5.0f}s  "
+              f"{s.requests:>5}  {s.confirmed_count:>4} {s.unconfirmed_count:>4} "
+              f"{s.rejected_count:>4}  {s.target}{suffix}")
+    return 0
+
+
+def cmd_show(args):
+    with EvidenceStore(args.db) as store:
+        try:
+            report = store.load(args.id)
+        except KeyError as e:
+            sys.exit(str(e))
+
+    print(f"Scan {report.id}: {report.target}")
+    print(f"Ran    : {report.started_at}, took {report.duration_seconds:.0f}s")
+    settings = []
+    if report.authenticated:
+        settings.append("logged in")
+    if report.safe_mode:
+        settings.append("safe mode, timing tests skipped")
+    if settings:
+        print(f"Run as : {', '.join(settings)}")
+    print(f"Crawled {report.summary()}")
+    print(f"Detector flagged {report.candidates} of them as suspicious\n")
+
+    print_findings(report)
+    print_tally(report)
+
+    if report.avoided_urls:
+        print(f"\nLeft alone on purpose ({len(report.avoided_urls)}):")
+        for url in report.avoided_urls:
+            print(f"  {url}")
+    return 0
+
+
+def cmd_diff(args):
+    with EvidenceStore(args.db) as store:
+        try:
+            before = store.load(args.before)
+            after = store.load(args.after)
+        except KeyError as e:
+            sys.exit(str(e))
+
+    result = compare(before, after)
+
+    print(f"scan {before.id} ({before.started_at[:19]})  ->  "
+          f"scan {after.id} ({after.started_at[:19]})")
+    if result.same_target:
+        print(f"target {before.target}")
+    else:
+        # not refused, because scanning the fixed copy on another port is a
+        # perfectly normal thing to want to compare. said out loud, because a
+        # diff across two different apps means nothing and looks like it does.
+        print(f"[!] different targets: {before.target} then {after.target}. "
+              f"Findings are matched by url, so almost everything will read as "
+              f"fixed and new.")
+
+    if after.safe_mode != before.safe_mode:
+        print("[!] one of these ran in safe mode and the other did not, so the "
+              "timing findings are not comparable")
+
+    for title, findings in (("FIXED", result.fixed),
+                            ("NEW", result.appeared),
+                            ("STILL THERE", result.still_there)):
+        print(f"\n{title} ({len(findings)})")
+        if not findings:
             print("  none")
+        for f in findings:
+            score = f"{f.score.cvss_score} {f.score.severity}  " if f.score else ""
+            print(f"  {score}[{f.kind}] {f.point}")
 
-        if report.unconfirmed:
-            print("\nUNCONFIRMED (could not prove either way)")
-            for f in report.unconfirmed:
-                print(f"  [{f.kind}] {f.point}\n      {f.reason}")
-
-        print("\nREJECTED (false alarms, removed)")
-        for f in report.rejected:
-            print(f"  [{f.kind}] {f.point}")
-            print(f"      detector said: {f.evidence.get('detector_reason')}")
-            print(f"      but: {f.reason}")
-        if not report.rejected:
-            print("  none")
-
-        # findings the detector never flagged are the blind ones, caught by the
-        # clock alone. counting them as candidates would flatter the percentage.
-        from_detector = [f for f in report.confirmed if f.evidence.get("detector_reason")]
-        blind = len(report.confirmed) - len(from_detector)
-
-        removed = len(report.rejected)
-        pct = (removed / report.candidates * 100) if report.candidates else 0
-        print(f"\n{report.candidates} suspicious -> {len(from_detector)} proved, "
-              f"{removed} false alarms removed ({pct:.0f}%)")
-        if blind:
-            print(f"plus {blind} the detector could not see, proved by the timing test")
-        print(f"{client.request_count} requests sent")
-        if client.session_recoveries:
-            print(f"session expired and was restored {client.session_recoveries} time(s)")
     return 0
 
 
@@ -208,8 +336,26 @@ def main():
     sc.add_argument("--safe-mode", action="store_true",
                     help="skip the timing tests, the only ones that make the "
                          "server wait")
+    sc.add_argument("--no-save", action="store_true",
+                    help="do not write this scan to the evidence file")
     add_login_args(sc)
+    add_db_arg(sc)
     sc.set_defaults(func=cmd_scan)
+
+    scans = sub.add_parser("scans", help="list the scans in the evidence file")
+    add_db_arg(scans)
+    scans.set_defaults(func=cmd_scans)
+
+    show = sub.add_parser("show", help="print one stored scan")
+    show.add_argument("id", type=int)
+    add_db_arg(show)
+    show.set_defaults(func=cmd_show)
+
+    diff = sub.add_parser("diff", help="compare two stored scans")
+    diff.add_argument("before", type=int)
+    diff.add_argument("after", type=int)
+    add_db_arg(diff)
+    diff.set_defaults(func=cmd_diff)
 
     args = parser.parse_args()
     return args.func(args)
