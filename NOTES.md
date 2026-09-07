@@ -256,10 +256,72 @@ That PR choice is a simplification and is written down as one. A reflected xss
 behind a login can still be reached by somebody with no account at all, by
 sending the link to a person who has one.
 
+## Next up: the evidence store
+
+This is the next thing to build, so here is everything needed to start it
+without reading the whole codebase first.
+
+**What it is for.** Three things, in order of how much they matter:
+
+1. The pdf report reads from it. Findings have to survive the process that made
+   them or the report has to re-run the whole scan to print anything.
+2. Comparing one scan against the next. Did the fix work, did something come
+   back, did the ZAP benchmark shift. That comparison is a result for the
+   report, and it is impossible without stored scans.
+3. It is the *evidence* half of the project's claim. A proved finding whose
+   proof was printed to a terminal and lost is not much better than a guess.
+
+**Already decided, do not reopen** (these are in the decisions list below):
+SQLite, one file, no server database. `evidence/*.db` is already in .gitignore,
+because the database is generated output and not source.
+
+**What has to go in.** A scan, then its findings. What a finding looks like in
+memory, so the schema does not have to be guessed at:
+
+```
+Finding    kind ("sqli" | "xss"), point, verdict, reason, evidence, score
+Point      url, method, param, source ("query" | "form"), other_params, value
+Score      cvss_vector, cvss_score, severity, cwe, cwe_name, owasp,
+           observed {PR, why}, conventional        # None unless CONFIRMED
+Verdict    CONFIRMED | UNCONFIRMED | REJECTED
+```
+
+`evidence` is a dict whose shape depends on how the finding was proved, and it
+carries `technique` saying which:
+
+```
+boolean   detector_reason, technique, proof{true_payload, false_payload,
+          true_status, false_status, true_length, false_length, similarity,
+          repeat_similarity, noise_floor, threshold}, true_body, false_body
+timing    detector_reason, technique, proof{true_payload, false_payload,
+          samples, true_median_ms, false_median_ms, true_min_ms, false_max_ms,
+          median_gap_ms, delay_asked_ms, ranges_separated, true_ms[], false_ms[]}
+browser   detector_reason, technique, proof{payload, token, variable, read_back}
+```
+
+Rejected findings carry `attempts[]` instead of `proof`, and that is worth
+storing too: "here is what we tried and why we threw it out" is the sentence
+that makes the false alarm count believable.
+
+The shapes differ per technique, so the sane move is one findings table with the
+common columns and the evidence dict as a json column, rather than trying to
+model three proof shapes in sql. Being able to query on kind, verdict, cvss and
+url is what matters.
+
+**Also worth storing per scan,** because these are the numbers the report quotes
+and they are all on the objects already: target url, when it ran, how long it
+took, `client.request_count`, `client.session_recoveries`, whether a login was
+used, whether safe mode was on, pages crawled, injection points found,
+`crawl.avoided`, and the candidate count.
+
+**Do not store** the payloads' full response bodies beyond what the evidence
+dict already truncates to. The point is a report, not a packet capture, and the
+file has to stay something you can hand in.
+
 ## Next
 
-1. sqlite evidence store
-2. pdf report
+1. sqlite evidence store, spec above
+2. pdf report, via playwright `page.pdf()`, WeasyPrint is ruled out below
 3. benchmark against owasp zap on dvwa and one other target. not juice shop,
    it is an angular spa and the crawler does not run javascript. that is a
    stated limitation in the report, not a bug to fix in the time left.
@@ -329,20 +391,38 @@ sending the link to a person who has one.
 
 ## Running it
 
+The lab app, which most of the tests need:
+
 ```
 venv\Scripts\activate
 python labs\vulnerable_app\app.py                      # terminal 1, leave running
-python main.py scan http://127.0.0.1:5001              # terminal 2, about 45s
-python main.py scan http://127.0.0.1:5001 --safe-mode  # no timing tests, about 13s
-pytest -q
+python main.py scan http://127.0.0.1:5001              # terminal 2, about 60s
+python main.py scan http://127.0.0.1:5001 --safe-mode  # no timing tests, faster
+pytest -q                                              # 60 tests, about 83s
 ```
 
-The scan takes about 45 seconds now. Most of that is the timing test waiting on
-purpose, 10 samples of a 2 second sleep. That is the cost of catching the blind
-case and there is no way around it.
+DVWA, which `test_auth.py` and `test_xss.py` use and skip if it is down. Docker
+Desktop has to be started by hand first, it does not start with windows:
 
-The test app is a server. It only runs while the terminal is open. If a scan or
-a test says it cannot connect, the app is just not running, start it again.
+```
+docker compose -f labs/dvwa/docker-compose.yml up -d
+python labs\dvwa\reset_dvwa.py                         # before every scan
+set PROOFSCAN_PASSWORD=password
+python main.py scan http://127.0.0.1:8080 --login-url http://127.0.0.1:8080/login.php --username admin --cookie security=low
+```
+
+`reset_dvwa.py` matters. Scanning changes DVWA's state, and two runs that did
+not start from the same place are not comparable. `--cookie security=low` also
+matters: without it DVWA serves the fully patched build and the scan finds
+nothing.
+
+The full lab scan takes about a minute and DVWA about three. Most of both is the
+timing test waiting on purpose. That is the cost of catching the blind case and
+there is no way around it.
+
+Both targets are servers. They only run while something is running them. If a
+scan or a test says it cannot connect, nothing is broken, the target is just not
+up, start it again.
 
 ## Environment
 
