@@ -112,7 +112,71 @@ DVWA = AnswerKey(
 )
 
 
-KEYS = {"dvwa": DVWA}
+# The lab target in labs/vulnerable_app. Written from the app's source and its
+# own ANSWER_KEY dict, broken down per parameter, which the benchmark needs and
+# that dict does not carry.
+#
+# Weaker evidence than DVWA and it should be reported as such: the app was
+# written by the same person as the scanner, so it cannot show that ProofScan
+# generalises. What it can show is both tools meeting the same traps, and the
+# traps here were planted precisely because they are the ones scanners fall for.
+LAB = AnswerKey(
+    name="lab",
+    description="ProofScan lab target, labs/vulnerable_app, on 127.0.0.1:5001",
+    entries=[
+        # --- SQL injection, real ---
+        Entry("/product", "id", "sqli", True,
+              "the id is concatenated into the query and the sqlite error is "
+              "printed on the page"),
+        Entry("/blind-product", "id", "sqli", True,
+              "injectable and completely silent. same page every time, no error, "
+              "no missing row. the true/false test cannot prove this one and "
+              "correctly rejects it, only the clock finds it"),
+        Entry("/login", "username", "sqli", True,
+              "concatenated into the WHERE clause"),
+        Entry("/login", "password", "sqli", True,
+              "concatenated into the same clause as the username"),
+
+        # --- SQL injection, traps ---
+        Entry("/safe-product", "id", "sqli", False,
+              "the fixed version of /product. parameterised, but it still echoes "
+              "the input, so a detector that watches for the response changing "
+              "flags it"),
+        Entry("/jitter", "id", "sqli", False,
+              "not injectable, just slow about one request in six. a timing "
+              "check that trusts a single slow response reports a bug here"),
+
+        # --- cross site scripting, real ---
+        Entry("/search", "q", "xss", True,
+              "reflected into the page body with no escaping"),
+        Entry("/comment", "q", "xss", True,
+              "reflected inside a title attribute, so it needs breaking out of "
+              "the attribute first"),
+        Entry("/product", "id", "xss", True,
+              "not planted. the sqlite error handler prints the error with "
+              "<pre>{e}</pre>, and sqlite quotes the offending input back inside "
+              "that message, so the payload arrives unescaped and runs"),
+
+        # --- cross site scripting, traps ---
+        Entry("/safe-search", "q", "xss", False,
+              "the fixed version of /search, html escaped"),
+        Entry("/plain", "q", "xss", False,
+              "reflects the payload back word for word and is completely safe, "
+              "because it serves text/plain and the browser renders the script "
+              "as words. a scanner that asks only whether the input came back "
+              "cannot tell this from /search"),
+        Entry("/jitter", "id", "xss", False,
+              "escaped on the way out"),
+    ],
+)
+
+# /login also prints its sqlite error unescaped, the same way /product does, so
+# it may well be injectable for cross site scripting too. The app's ANSWER_KEY
+# says it is not and ProofScan has never confirmed it, so it is deliberately not
+# listed here either way. Anything that reports it comes out under "reported but
+# not in the answer key" for checking by hand, which is what that bucket is for.
+
+KEYS = {"dvwa": DVWA, "lab": LAB}
 
 
 def get(name):

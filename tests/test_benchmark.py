@@ -358,3 +358,32 @@ def test_the_matrix_shows_what_each_tool_said_about_each_entry(dvwa_scan):
 def test_an_unknown_answer_key_says_which_ones_exist():
     with pytest.raises(KeyError, match="dvwa"):
         answer_keys.get("juiceshop")
+
+
+# --- the lab target key -------------------------------------------------------
+
+def test_the_lab_key_matches_the_apps_own_answer_key():
+    """The benchmark key is per parameter, the app's dict is per path. They have
+    to agree about which paths carry a real bug of each class, or one of them is
+    wrong and the benchmark is measuring against the wrong answers."""
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).parent.parent / "labs" / "vulnerable_app"))
+    from app import ANSWER_KEY
+
+    lab = answer_keys.get("lab")
+
+    for kind in ("sqli", "xss"):
+        from_key = {e.path for e in lab.entries if e.kind == kind and e.real}
+        from_app = {p for p, v in ANSWER_KEY.items() if v[kind]}
+        assert from_key == from_app, f"{kind} disagrees: {from_key} vs {from_app}"
+
+
+def test_the_lab_traps_are_the_ones_scanners_fall_for():
+    lab = answer_keys.get("lab")
+    traps = {(e.path, e.kind) for e in lab.traps}
+
+    assert ("/plain", "xss") in traps          # reflected verbatim, served as text
+    assert ("/jitter", "sqli") in traps        # randomly slow, not injectable
+    assert ("/safe-search", "xss") in traps    # escaped
+    assert ("/safe-product", "sqli") in traps  # parameterised

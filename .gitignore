@@ -16,6 +16,9 @@ reports/*.html
 .vscode/
 
 # Lab targets - big binaries, not source
+labs/zap/
+reports/zap-*.json
+reports/benchmark-*.txt
 labs/webgoat/*.jar
 labs/webgoat/.webgoat*/
 labs/webgoat/*.log
