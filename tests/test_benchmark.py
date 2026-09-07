@@ -387,3 +387,60 @@ def test_the_lab_traps_are_the_ones_scanners_fall_for():
     assert ("/jitter", "sqli") in traps        # randomly slow, not injectable
     assert ("/safe-search", "xss") in traps    # escaped
     assert ("/safe-product", "sqli") in traps  # parameterised
+
+
+# --- the zap plan -------------------------------------------------------------
+
+def test_the_plan_scopes_zap_to_the_target():
+    from benchmark.run_zap import build_plan
+
+    plan = build_plan("http://dvwa/", "zap-dvwa.json")
+
+    assert '- "http://dvwa/"' in plan
+    assert '- "http://dvwa.*"' in plan
+    assert 'reportFile: "zap-dvwa.json"' in plan
+    assert "template: traditional-json" in plan
+
+
+def test_the_plan_leaves_alone_what_proofscan_leaves_alone():
+    """ZAP will log itself out halfway through a scan otherwise, and everything
+    after that point is an anonymous scan reported as an authenticated one."""
+    from benchmark.run_zap import build_plan
+
+    plan = build_plan("http://dvwa/", "out.json")
+
+    for pattern in ("logout", "setup", "security"):
+        assert pattern in plan
+
+
+def test_a_session_becomes_a_replacer_rule():
+    """Both tools have to be given the same access or the comparison says
+    nothing about either of them."""
+    from benchmark.run_zap import build_plan
+
+    plan = build_plan("http://dvwa/", "out.json",
+                      cookie="PHPSESSID=abc123; security=low")
+
+    assert "type: replacer" in plan
+    assert 'replacementString: "PHPSESSID=abc123; security=low"' in plan
+    assert "matchString: Cookie" in plan
+
+
+def test_no_session_means_no_replacer():
+    """The lab target has no login, and a replacer rule with an empty cookie
+    would strip the header rather than leave it alone."""
+    from benchmark.run_zap import build_plan
+
+    assert "type: replacer" not in build_plan("http://host/", "out.json")
+
+
+def test_the_plan_spiders_and_actively_scans():
+    """A passive scan alone would be a comparison against a tool that never
+    sends a payload, which is not the comparison anybody cares about."""
+    from benchmark.run_zap import build_plan
+
+    plan = build_plan("http://dvwa/", "out.json", scan_minutes=25)
+
+    assert "type: spider" in plan
+    assert "type: activeScan" in plan
+    assert "maxScanDurationInMins: 25" in plan
