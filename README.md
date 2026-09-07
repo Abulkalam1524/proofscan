@@ -43,7 +43,7 @@ Phase 1, in progress.
 - [x] validators, true/false, timing and headless browser
 - [x] cvss v3.1 scoring, cwe and owasp mapping
 - [x] evidence store
-- [ ] pdf report
+- [x] pdf report
 - [ ] benchmark against zap
 
 ## Setup
@@ -76,7 +76,13 @@ without running the target again:
 python main.py scans          # every scan in the file
 python main.py show 1         # one scan, findings and proofs
 python main.py diff 1 2       # what was fixed, what is new, what is still there
+python main.py report 1       # one scan, as a pdf
 ```
+
+The pdf is written from the stored scan and never re-runs anything. It carries
+the proof behind every confirmed finding, the CVSS score with a note saying
+which metric was observed and which came from the class, and the candidates that
+were thrown out along with what was tried against each.
 
 Tests:
 

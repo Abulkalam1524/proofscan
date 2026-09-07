@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ProofScan report - {{ scan.target }}</title>
+<style>
+  @page { size: A4; }
+
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+  body {
+    font-family: "Segoe UI", Helvetica, Arial, sans-serif;
+    font-size: 10pt;
+    line-height: 1.45;
+    color: #1a1a1a;
+    margin: 0;
+  }
+
+  h1, h2, h3 { font-weight: 600; margin: 0; }
+  h2 {
+    font-size: 13pt;
+    margin: 22pt 0 8pt;
+    padding-bottom: 3pt;
+    border-bottom: 1px solid #d4d4d4;
+    break-after: avoid;
+  }
+  h3 { font-size: 10.5pt; margin: 14pt 0 4pt; break-after: avoid; }
+  p { margin: 0 0 7pt; }
+
+  code, .mono {
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 8.5pt;
+    word-break: break-all;
+  }
+
+  /* cover */
+  .cover { break-after: page; padding-top: 34mm; }
+  .mark {
+    font-size: 9pt; letter-spacing: 2.4pt; text-transform: uppercase;
+    color: #6f6f6f;
+  }
+  .cover h1 { font-size: 25pt; line-height: 1.15; margin: 6pt 0 14pt; }
+  .cover .target {
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 12pt; color: #2f4f7f; margin-bottom: 26pt; word-break: break-all;
+  }
+  .cover .facts { width: 100%; border-top: 2px solid #1a1a1a; }
+  .cover .facts th {
+    text-align: left; font-weight: 600; width: 46mm; padding: 5pt 0;
+    vertical-align: top; border-bottom: 1px solid #e6e6e6;
+  }
+  .cover .facts td {
+    padding: 5pt 0; vertical-align: top; border-bottom: 1px solid #e6e6e6;
+  }
+  .cover .note { margin-top: 26pt; font-size: 8.5pt; color: #6f6f6f; }
+
+  /* headline numbers */
+  .headline {
+    display: flex; gap: 10pt; margin: 0 0 12pt; break-inside: avoid;
+  }
+  .headline div {
+    flex: 1; border: 1px solid #d4d4d4; border-radius: 3pt;
+    padding: 8pt 9pt; text-align: center;
+  }
+  .headline .n { font-size: 20pt; font-weight: 600; line-height: 1.1; }
+  .headline .l { font-size: 7.5pt; color: #6f6f6f; text-transform: uppercase;
+                 letter-spacing: 0.6pt; }
+
+  table.grid { width: 100%; border-collapse: collapse; margin-bottom: 8pt; }
+  table.grid th, table.grid td {
+    text-align: left; padding: 4pt 6pt; border-bottom: 1px solid #e6e6e6;
+    vertical-align: top;
+  }
+  table.grid th { font-weight: 600; background: #f5f5f5; font-size: 9pt; }
+  table.grid td.k { width: 46mm; color: #4a4a4a; }
+
+  /* severity */
+  .chip {
+    display: inline-block; padding: 1.5pt 6pt; border-radius: 2pt;
+    color: #fff; font-size: 8.5pt; font-weight: 600; white-space: nowrap;
+  }
+  .Critical { background: #a3231c; }
+  .High     { background: #c05621; }
+  .Medium   { background: #9a7317; }
+  .Low      { background: #45688f; }
+  .None     { background: #6f6f6f; }
+
+  .bar { height: 9pt; border-radius: 2pt; display: inline-block;
+         vertical-align: middle; min-width: 2pt; }
+
+  /* findings */
+  .finding { margin: 0 0 16pt; }
+  .finding .head {
+    break-inside: avoid; break-after: avoid;
+    border-left: 3pt solid #a3231c; padding-left: 8pt;
+  }
+  .finding.xss .head { border-left-color: #9a7317; }
+  .finding .where {
+    font-family: Consolas, "Courier New", monospace; font-size: 9pt;
+    color: #333; word-break: break-all; margin: 2pt 0 5pt;
+  }
+  .finding .verdict { font-size: 9.5pt; margin-bottom: 6pt; }
+  .caveat {
+    font-size: 8.5pt; color: #4a4a4a; background: #f7f7f7;
+    border-left: 2pt solid #ccc; padding: 6pt 8pt; margin: 6pt 0 0;
+    break-inside: avoid;
+  }
+  .label {
+    font-size: 7.5pt; text-transform: uppercase; letter-spacing: 0.6pt;
+    color: #6f6f6f; margin: 9pt 0 3pt; font-weight: 600;
+  }
+
+  ul { margin: 0 0 8pt; padding-left: 14pt; }
+  li { margin-bottom: 4pt; }
+  .cols { column-count: 2; column-gap: 10pt; font-size: 8.5pt; }
+  .quiet { color: #6f6f6f; }
+</style>
+</head>
+<body>
+
+<header class="cover">
+  <div class="mark">ProofScan {{ version }}</div>
+  <h1>Web Application<br>Security Assessment</h1>
+  <div class="target">{{ scan.target }}</div>
+
+  <table class="facts">
+    <tr><th>Scan run</th><td>{{ started }}, took {{ duration }}</td></tr>
+    <tr><th>Report generated</th><td>{{ generated }}</td></tr>
+    <tr><th>Coverage</th><td>{{ scan.pages }} pages, {{ scan.injection_points }} injection points, {{ scan.requests }} requests</td></tr>
+    <tr>
+      <th>Findings proved</th>
+      <td>
+        {% if severities %}
+          {% for band, count in severities %}
+            <span class="chip {{ band }}">{{ count }} {{ band }}</span>
+          {% endfor %}
+        {% else %}
+          none
+        {% endif %}
+      </td>
+    </tr>
+    <tr>
+      <th>Tests run as</th>
+      <td>
+        {% if scan.authenticated %}authenticated{% else %}unauthenticated{% endif %}{% if scan.safe_mode %}, safe mode, timing tests skipped{% endif %}
+      </td>
+    </tr>
+  </table>
+
+  <p class="note">
+    Every finding in this report was proved against the running application.
+    Nothing was inferred from a version number or a banner. Candidates that
+    could not be proved are listed too, with what was tried, in
+    <em>Candidates thrown out</em>.
+  </p>
+</header>
+
+<h2>Summary</h2>
+
+<div class="headline">
+  <div>
+    <div class="n">{{ tally.candidates }}</div>
+    <div class="l">suspected</div>
+  </div>
+  <div>
+    <div class="n">{{ scan.confirmed | length }}</div>
+    <div class="l">proved</div>
+  </div>
+  <div>
+    <div class="n">{{ tally.rejected }}</div>
+    <div class="l">thrown out</div>
+  </div>
+  <div>
+    <div class="n">{{ "%.0f" | format(tally.removed_pct) }}%</div>
+    <div class="l">false alarms removed</div>
+  </div>
+</div>
+
+<p>
+  The scan reached {{ scan.pages }} pages and found {{ scan.injection_points }}
+  places where input goes into the application. Stage one flagged
+  {{ tally.candidates }} of them as suspicious. Stage two proved
+  {{ tally.proved }} and threw out {{ tally.rejected }}
+  {%- if tally.blind %}, and the timing tests proved a further {{ tally.blind }}
+  that stage one could not see at all{% endif %}.
+  {% if scan.session_recoveries %}
+  The session expired and was restored {{ scan.session_recoveries }} time(s)
+  during the scan.
+  {% endif %}
+</p>
+
+{% if severities %}
+<table class="grid">
+  <tr><th>Severity</th><th>Count</th><th></th></tr>
+  {% for band, count in severities %}
+  <tr>
+    <td><span class="chip {{ band }}">{{ band }}</span></td>
+    <td>{{ count }}</td>
+    <td><span class="bar {{ band }}" style="width: {{ count * 22 }}pt"></span></td>
+  </tr>
+  {% endfor %}
+</table>
+{% endif %}
+
+{% if scan.confirmed %}
+<table class="grid">
+  <tr><th>#</th><th>Finding</th><th>Where</th><th>CVSS</th><th>CWE</th></tr>
+  {% for f in scan.confirmed %}
+  <tr>
+    <td>{{ loop.index }}</td>
+    <td>{% if f.kind == "sqli" %}SQL injection{% else %}Cross site scripting{% endif %}</td>
+    <td class="mono">{{ f.point.method }} {{ f.point.url }} [{{ f.point.param }}]</td>
+    <td>{% if f.score %}<span class="chip {{ f.score.severity }}">{{ f.score.cvss_score }}</span>{% endif %}</td>
+    <td>{% if f.score %}{{ f.score.cwe }}{% endif %}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p>Nothing was proved on this target inside the scope described below.</p>
+{% endif %}
+
+{% if techniques %}
+<h2>How these were proved</h2>
+{% for name, text in techniques %}
+<h3>
+  {% if name == "boolean" %}The true and false test{% endif %}
+  {% if name == "timing" %}The timing test{% endif %}
+  {% if name == "browser" %}The browser test{% endif %}
+</h3>
+<p>{{ text }}</p>
+{% endfor %}
+{% endif %}
+
+{% if confirmed %}
+<h2>Confirmed findings</h2>
+{% for item in confirmed %}
+{% set f = item.finding %}
+<section class="finding {{ f.kind }}">
+  <div class="head">
+    <h3>
+      {{ loop.index }}.
+      {% if f.kind == "sqli" %}SQL injection{% else %}Cross site scripting{% endif %}
+      {% if f.score %}<span class="chip {{ f.score.severity }}">{{ f.score.cvss_score }} {{ f.score.severity }}</span>{% endif %}
+    </h3>
+    <div class="where">{{ f.point.method }} {{ f.point.url }} &nbsp;parameter <strong>{{ f.point.param }}</strong> ({{ f.point.source }})</div>
+    <div class="verdict">{{ f.reason }}.</div>
+  </div>
+
+  {% if f.score %}
+  <table class="grid">
+    <tr><td class="k">CVSS v3.1</td><td class="mono">{{ f.score.cvss_vector }}</td></tr>
+    <tr><td class="k">Weakness</td><td>{{ f.score.cwe }} &ndash; {{ f.score.cwe_name }}</td></tr>
+    <tr><td class="k">OWASP Top 10 2021</td><td>{{ f.score.owasp }}</td></tr>
+    {% if f.score.observed %}
+    <tr><td class="k">Privileges required</td><td>{{ f.score.observed.PR }}, because {{ f.score.observed.why }}</td></tr>
+    {% endif %}
+  </table>
+  {% endif %}
+
+  <div class="label">The proof</div>
+  <table class="grid">
+    {% for label, value in item.proof_rows %}
+    <tr><td class="k">{{ label }}</td><td class="mono">{{ value }}</td></tr>
+    {% endfor %}
+  </table>
+
+  {% if f.score and f.score.conventional %}
+  <div class="caveat"><strong>What this does not prove.</strong> {{ f.score.conventional }}</div>
+  {% endif %}
+
+  {% if item.advice %}
+  <div class="label">How to fix it</div>
+  <p>{{ item.advice }}</p>
+  {% endif %}
+</section>
+{% endfor %}
+{% endif %}
+
+{% if unconfirmed %}
+<h2>Could not be proved either way</h2>
+<p>
+  These were flagged by stage one and stage two could not settle them, usually
+  because something it needed was unavailable. They are neither confirmed nor
+  dismissed and want checking by hand.
+</p>
+<table class="grid">
+  <tr><th>Where</th><th>What happened</th></tr>
+  {% for f in unconfirmed %}
+  <tr>
+    <td class="mono">{{ f.point.method }} {{ f.point.url }} [{{ f.point.param }}]</td>
+    <td>{{ f.reason }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% endif %}
+
+<h2>Candidates thrown out</h2>
+{% if rejected %}
+<p>
+  {{ tally.rejected }} of the {{ tally.candidates }} suspected points were
+  disproved and do not appear as findings. Each one is a false alarm that a
+  scanner reporting on the response alone would have handed over for somebody to
+  check by hand. What was tried against each is listed, because a false alarm
+  count is only worth something with the work behind it shown.
+</p>
+{% for item in rejected %}
+{% set f = item.finding %}
+<section class="finding">
+  <h3>
+    {{ loop.index }}.
+    {% if f.kind == "sqli" %}SQL injection{% else %}Cross site scripting{% endif %}
+    <span class="quiet">not proved</span>
+  </h3>
+  <div class="where">{{ f.point.method }} {{ f.point.url }} &nbsp;parameter <strong>{{ f.point.param }}</strong></div>
+  <table class="grid">
+    <tr><td class="k">Stage one flagged it</td><td>{{ f.evidence.detector_reason }}</td></tr>
+    <tr><td class="k">Thrown out because</td><td>{{ f.reason }}</td></tr>
+  </table>
+  {% if item.attempt_rows %}
+  <table class="grid">
+    <tr><th>What was sent</th><th>What came back</th></tr>
+    {% for tried, happened in item.attempt_rows %}
+    <tr><td class="mono">{{ tried }}</td><td>{{ happened }}</td></tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+</section>
+{% endfor %}
+{% else %}
+<p>Nothing was flagged by stage one and then disproved in this scan.</p>
+{% endif %}
+
+<h2>Scope and limitations</h2>
+<ul>
+  {% for note in limitations %}
+  <li>{{ note }}</li>
+  {% endfor %}
+</ul>
+
+<h2>Appendix: what was reached</h2>
+<div class="label">Pages crawled ({{ scan.page_urls | length }})</div>
+<div class="cols mono">
+  {% for url in scan.page_urls %}
+  {{ url }}<br>
+  {% endfor %}
+</div>
+
+{% if scan.avoided_urls %}
+<div class="label">Left alone on purpose ({{ scan.avoided_urls | length }})</div>
+<p class="quiet" style="font-size: 8.5pt">
+  In scope and reachable, but requesting them would have changed how the target
+  behaves and made everything scanned afterwards meaningless.
+</p>
+<div class="cols mono">
+  {% for url in scan.avoided_urls %}
+  {{ url }}<br>
+  {% endfor %}
+</div>
+{% endif %}
+
+</body>
+</html>

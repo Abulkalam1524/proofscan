@@ -32,6 +32,7 @@ class FindingsView:
     the same output as the live one, the store lost something.
     """
     findings = ()
+    candidates = 0
 
     def by_verdict(self, verdict):
         return [f for f in self.findings if f.verdict is verdict]
@@ -50,3 +51,28 @@ class FindingsView:
     @property
     def rejected(self):
         return self.by_verdict(Verdict.REJECTED)
+
+    @property
+    def tally(self):
+        """The candidate funnel: how many were suspected, and how many survived.
+
+        This is the number the project is judged on, so the terminal and the pdf
+        both read it from here rather than each working it out. Two places
+        counting the same thing is two places to disagree, and the report would
+        be the one that got printed.
+
+        Findings the detector never flagged are the blind ones, caught by the
+        clock alone. They are counted apart from the rest, because folding them
+        into the candidates would flatter the percentage.
+        """
+        from_detector = [f for f in self.confirmed
+                         if f.evidence.get("detector_reason")]
+        removed = len(self.rejected)
+
+        return {
+            "candidates": self.candidates,
+            "proved": len(from_detector),
+            "blind": len(self.confirmed) - len(from_detector),
+            "rejected": removed,
+            "removed_pct": (removed / self.candidates * 100) if self.candidates else 0.0,
+        }

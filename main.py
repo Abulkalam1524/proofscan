@@ -13,6 +13,7 @@ Every scan is stored. Reading them back:
     python main.py scans              # what is in the file
     python main.py show 3             # one scan, printed from the file
     python main.py diff 2 3           # what moved between two scans
+    python main.py report 3           # one scan, as a pdf
 """
 import argparse
 import os
@@ -22,6 +23,7 @@ from proofscan.auth import FormLogin
 from proofscan.config import Scope
 from proofscan.crawler import Crawler
 from proofscan.http_client import HttpClient
+from proofscan.report import write_pdf
 from proofscan.scanner import scan
 from proofscan.store import DEFAULT_PATH, EvidenceStore, compare
 
@@ -133,17 +135,15 @@ def print_findings(report):
 
 
 def print_tally(report):
-    # findings the detector never flagged are the blind ones, caught by the
-    # clock alone. counting them as candidates would flatter the percentage.
-    from_detector = [f for f in report.confirmed if f.evidence.get("detector_reason")]
-    blind = len(report.confirmed) - len(from_detector)
+    # the same numbers the pdf quotes, worked out in one place so the two can
+    # never disagree about them
+    tally = report.tally
 
-    removed = len(report.rejected)
-    pct = (removed / report.candidates * 100) if report.candidates else 0
-    print(f"\n{report.candidates} suspicious -> {len(from_detector)} proved, "
-          f"{removed} false alarms removed ({pct:.0f}%)")
-    if blind:
-        print(f"plus {blind} the detector could not see, proved by the timing test")
+    print(f"\n{tally['candidates']} suspicious -> {tally['proved']} proved, "
+          f"{tally['rejected']} false alarms removed ({tally['removed_pct']:.0f}%)")
+    if tally["blind"]:
+        print(f"plus {tally['blind']} the detector could not see, "
+              f"proved by the timing test")
     print(f"{report.requests} requests sent")
     if report.session_recoveries:
         print(f"session expired and was restored {report.session_recoveries} time(s)")
@@ -279,6 +279,30 @@ def cmd_show(args):
     return 0
 
 
+def cmd_report(args):
+    """Print a stored scan as a pdf.
+
+    It goes through the store rather than taking a live report, which is the
+    point: a report is a claim about what was proved, so it is made from the
+    evidence that was kept and not from a scan happening at the same time.
+    """
+    with EvidenceStore(args.db) as store:
+        try:
+            scan = store.load(args.id)
+        except KeyError as e:
+            sys.exit(str(e))
+
+    print(f"Scan {scan.id}: {scan.target}")
+    print(f"  {len(scan.confirmed)} confirmed, {len(scan.rejected)} thrown out")
+
+    pdf_path, html_path = write_pdf(scan, args.output, keep_html=args.html)
+
+    if html_path:
+        print(f"  html: {html_path}")
+    print(f"  pdf : {pdf_path}")
+    return 0
+
+
 def cmd_diff(args):
     with EvidenceStore(args.db) as store:
         try:
@@ -350,6 +374,16 @@ def main():
     show.add_argument("id", type=int)
     add_db_arg(show)
     show.set_defaults(func=cmd_show)
+
+    rep = sub.add_parser("report", help="print a stored scan as a pdf")
+    rep.add_argument("id", type=int)
+    rep.add_argument("-o", "--output", metavar="PATH",
+                     help="where to write the pdf "
+                          "(default reports/proofscan-scan-<id>.pdf)")
+    rep.add_argument("--html", action="store_true",
+                     help="keep the rendered html beside the pdf")
+    add_db_arg(rep)
+    rep.set_defaults(func=cmd_report)
 
     diff = sub.add_parser("diff", help="compare two stored scans")
     diff.add_argument("before", type=int)
