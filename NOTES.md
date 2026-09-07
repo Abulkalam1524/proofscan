@@ -18,6 +18,7 @@ Commits so far:
 - `559df38` cvss v3.1 scoring, cwe numbers and owasp categories
 - `2e81d71` the sqlite evidence store, and scans/show/diff to read it back
 - `8c982f3` the pdf report
+- `a9a00cb` the zap benchmark harness, answer keys, and the runner
 
 115 tests passing, 90s for the suite.
 
@@ -387,14 +388,136 @@ Not done, and deliberately: no matplotlib chart, though it is in
 not need a png written to disk and embedded. If a chart is wanted later that is
 where it would go.
 
+## The ZAP benchmark
+
+DVWA, 8 Sep 2026. **This is the headline result.**
+
+ZAP 2.17.0 from `ghcr.io/zaproxy/zaproxy:stable`, joined to DVWA's own compose
+network so it reaches the app as `http://dvwa/`. ProofScan scan 3 in the
+evidence store is the other side. Both were given the same authenticated
+session with `security=low`, obtained outside either tool, because DVWA's login
+form carries a user_token that neither tool's built in form login sends. Both
+were kept off logout, setup and security.php. Run it with:
+
+```
+python -m benchmark.run_zap --target http://dvwa/ --network dvwa_default     --login-dvwa --login-url http://127.0.0.1:8080 --out reports/zap-dvwa.json
+python -m benchmark --scan 3 --zap reports/zap-dvwa.json --key dvwa
+```
+
+```
+                                 alerts  correct  false  missed  precision  recall
+ProofScan, verification off          12        6      6       1       0.50    0.86
+ProofScan, verification on            6        6      0       1       1.00    0.86
+OWASP ZAP                             7        6      1       1       0.86    0.86
+
+ZAP reported 95 further alerts in classes ProofScan does not look for.
+```
+
+**Verification doubles precision, 0.50 to 1.00, and costs nothing in recall.**
+That is the project's whole claim, measured, on an app I did not write.
+
+**The single best line in the project is `/vulnerabilities/csp [include]`.** ZAP
+reports it as reflected cross site scripting, High risk, Medium confidence. It is
+not exploitable: the page sends a Content-Security-Policy header and the browser
+refuses to run the script. ProofScan's stage one flags it too, and the browser
+validator throws it out, because the payload never executes. So this is not a
+made up example of what a verifying scanner would catch. It is the tool people
+actually use, reporting a vulnerability that is not there, on a target neither of
+us wrote, and the browser settling it.
+
+Things that must be said out loud in the write up, because they are not
+flattering and leaving them out would be the dishonest version:
+
+- **ZAP found the blind sql injection.** I half expected it to miss `sqli_blind`
+  and it did not. Its time based rules work.
+- **All three rows have the same recall.** Everything real in scope was found by
+  everyone except `xss_d`, which is DOM based, and which everyone missed.
+  ProofScan misses it by design and says so. ZAP has a DOM scanner and still
+  missed it, probably because the ajax spider is off in this plan.
+- **ZAP reported 95 alerts in other classes**, against ProofScan's zero. That is
+  a real coverage difference and it is roughly the whole argument against
+  ProofScan. The right framing is a trade: ZAP covers about a hundred classes at
+  0.86 precision inside the two we share, ProofScan covers two at 1.00. Never
+  claim ProofScan beats ZAP. Claim it trades coverage for precision, and say it
+  before anyone asks.
+- **Neither scanner logged itself in.** The session was fetched outside and
+  handed to both. That is fair, because both got the same thing, but it is not
+  the tools authenticating themselves and the methodology chapter has to say so.
+- **`brute [password]` was not flagged by anything this time.** An earlier note
+  in this file said ProofScan found it and correctly did not confirm it. In this
+  run stage one never flagged it at all. Still correct, just a different route to
+  the same right answer.
+
+Predicted against measured, for the slide 8 comparison, which the write up should
+show side by side rather than quietly replacing:
+
+```
+                        predicted (proposal)     measured (DVWA)
+ProofScan, no verify    63% accuracy             0.50 precision
+ProofScan, verified     93% accuracy             1.00 precision
+OWASP ZAP               54% accuracy             0.86 precision
+false alarms removed    about 88%                50% of candidates
+```
+
+The prediction was too pessimistic about ProofScan and much too pessimistic about
+ZAP. Being wrong in both directions is worth a paragraph. ZAP is a good tool and
+the proposal underrated it.
+
+**A failed run that looked like a success, worth a paragraph of its own.** The
+first attempt produced no report. The exclude patterns went into the generated
+plan as yaml double quoted scalars, and a double quoted scalar processes escapes,
+so ZAP's parser refused `".*setup\.php.*"` with "found unknown escape character"
+and died four seconds in. The container was up, healthy, and exited zero. Checking
+`docker ps` showed what looked like a scan running. Only the log said otherwise.
+Had that gone unnoticed the benchmark would have reported ZAP finding nothing on
+DVWA, which would have looked like a spectacular result and been entirely
+fabricated. Single quoted scalars fixed it and there is a test so it cannot come
+back quietly.
+
+**ZAP changed DVWA's admin password during the scan.** After the run, the three
+DVWA authentication tests failed and `admin`/`password` no longer worked;
+`reset_dvwa.py` had to rebuild the database. ZAP's own report shows why: it
+submitted `/vulnerabilities/csrf/` with `password_new`, `password_conf` and
+`Change`. That is DVWA's change password form, and ZAP filled both boxes with
+the same payload and pressed the button.
+
+This is the exact bug ProofScan hit on 7 Sep and fixed with the rule that a form
+with two or more password boxes is never submitted. ZAP has no such rule. So the
+project's most unglamorous design decision, the one that reads like defensive
+housekeeping, is a thing the industry standard tool does not do, and there is a
+reproducible demonstration of it costing a target its credentials.
+
+Be careful how this is claimed. ZAP did not lock *itself* out, because it was
+given a fixed session cookie and a php session survives a password change. It
+locked out everything that came afterwards. The honest statement is that the
+scanner altered the state of the application it was measuring, and a finding
+recorded after that moment is about a different application from one recorded
+before it. Whether ZAP's own numbers were affected is not established, and the
+write up should say that rather than imply damage.
+
+Before quoting the DVWA numbers as final, run it once more with the change
+password page excluded for both tools, so the target is provably unchanged from
+start to finish. The numbers are unlikely to move. Being able to say they were
+produced against a stable target is worth twenty minutes.
+
+Still to do on the benchmark: run it three times rather than once. One run is an
+anecdote. Three runs and a sentence saying whether the numbers moved is half an
+hour and makes the result a measurement.
+
 ## Next
 
-1. benchmark against owasp zap on dvwa and one other target. not juice shop,
-   it is an angular spa and the crawler does not run javascript. that is a
-   stated limitation in the report, not a bug to fix in the time left.
-   Store both runs and quote the diff.
-2. write the dissertation itself. Most of the argument is already in this
-   file and in the two reports the tool prints.
+1. **write the dissertation.** Nothing else matters as much. Zero pages exist,
+   and most of the argument is already in this file and in the reports the tool
+   prints. Start with the Results chapter while the benchmark is fresh.
+2. run the DVWA benchmark three times, report whether the numbers move.
+3. broken access control, or write the scope reduction down deliberately. The
+   proposal deck lists it as one of three headline techniques and it does not
+   exist. Do not leave that gap for somebody else to notice.
+4. screenshots stored with each proved finding. Promised twice in the deck,
+   about three hours, chromium is already open during xss validation.
+5. more targets. WebGoat and bWAPP through docker now that docker works. Not
+   juice shop, it is an angular spa and the crawler does not run javascript.
+   That is a stated limitation, not a bug to fix in the time left.
 
 ## Decisions made, do not redo these
 

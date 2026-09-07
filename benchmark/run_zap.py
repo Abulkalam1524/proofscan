@@ -86,7 +86,6 @@ def build_plan(target, report_name, cookie=None, spider_minutes=3,
       deleteAllRules: true
     rules:
       - description: "session handed over from outside the scanner"
-        enabled: true
         matchType: req_header
         matchString: Cookie
         matchRegex: false

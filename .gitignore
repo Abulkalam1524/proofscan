@@ -18,6 +18,7 @@ reports/*.html
 # Lab targets - big binaries, not source
 labs/zap/
 reports/zap-*.json
+reports/*-plan.yaml
 reports/benchmark-*.txt
 labs/webgoat/*.jar
 labs/webgoat/.webgoat*/
