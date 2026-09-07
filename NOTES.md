@@ -15,7 +15,7 @@ Commits so far:
 - `ebf663d` measure the page's own noise instead of guessing a threshold
 - `f95a42f` xss detector and browser validator
 
-38 tests passing, 80s for the suite.
+60 tests passing, 83s for the suite.
 
 Full scan of the test app, everything switched on, 7 Sep 2026:
 
@@ -60,6 +60,8 @@ one command apart.
 - [x] xss detector (stage 1, reflection only, noisy on purpose)
 - [x] xss browser validator (stage 2, chromium, proves the script actually ran)
 - [x] xss confirmed on dvwa, reflected and both stored, 0 false positives
+- [x] cvss v3.1 base scores, cwe numbers, owasp top 10 2021 categories
+- [x] findings come back worst first, because that is the order they get fixed in
 
 ## DVWA, and the number the auth work has to beat
 
@@ -217,12 +219,45 @@ it is handled entirely in javascript. Finding those means watching the DOM rathe
 than the response, which is phase 2. Say it in the report rather than let someone
 find it.
 
+## Scoring
+
+`scoring.py`. CVSS v3.1 base score, CWE number, OWASP Top 10 2021 category. The
+arithmetic is the published formula including its own integer rounding rule, and
+`test_scoring.py` checks it against vectors whose scores are published rather
+than against whatever this code happens to produce. That caught me writing down
+a reference vector from memory and getting it wrong: the code said 6.0, I had
+written 6.1, and the code was right.
+
+What comes out:
+
+```
+                   lab app (no login)   dvwa (behind a login)
+sqli   CWE-89      9.8 Critical         8.8 High
+xss    CWE-79      6.1 Medium           5.4 Medium
+```
+
+**Only proved findings are scored.** Putting a decimal point on something the
+scanner could not prove is the exact habit this project argues against, so
+REJECTED and UNCONFIRMED findings carry no score at all, and there is a test
+that keeps it that way.
+
+**One metric is observed, the rest are conventional, and the report says which
+is which.** Privileges Required comes from whether the scan needed credentials
+to reach the point, which is a fact this tool actually knows. Everything else is
+the vector normally accepted for the class. Each score carries a sentence saying
+what was *not* proved: ProofScan shows the database evaluates injected input,
+but it never reads the data out, because a scanner that did that to prove a
+point would be causing the damage it is reporting.
+
+That PR choice is a simplification and is written down as one. A reflected xss
+behind a login can still be reached by somebody with no account at all, by
+sending the link to a person who has one.
+
 ## Next
 
-1. cvss v3.1 scoring and cwe mapping
-3. sqlite evidence store
-4. pdf report
-5. benchmark against owasp zap on dvwa and one other target. not juice shop,
+1. sqlite evidence store
+2. pdf report
+3. benchmark against owasp zap on dvwa and one other target. not juice shop,
    it is an angular spa and the crawler does not run javascript. that is a
    stated limitation in the report, not a bug to fix in the time left.
 

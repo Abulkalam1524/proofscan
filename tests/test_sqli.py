@@ -83,6 +83,25 @@ def test_every_confirmed_finding_carries_proof(report):
             assert proof["repeat_similarity"] < proof["threshold"]
 
 
+def test_only_proved_findings_get_a_score(report):
+    """A cvss number on something the scanner could not prove would be a
+    decimal point on a guess, which is the habit this project argues against."""
+    for f in report.confirmed:
+        assert f.score is not None, f"no score on a proved finding: {f.point}"
+        assert f.score.cvss_score > 0
+        assert f.score.cwe.startswith("CWE-")
+        assert f.score.cvss_vector.startswith("CVSS:3.1/")
+
+    for f in report.rejected + report.unconfirmed:
+        assert f.score is None, f"scored something unproved: {f.point}"
+
+
+def test_findings_come_back_worst_first(report):
+    """The report is a list of what to fix, so it has to be in that order."""
+    scores = [f.score.cvss_score for f in report.confirmed]
+    assert scores == sorted(scores, reverse=True)
+
+
 def test_the_blind_endpoint_is_proved_by_the_clock(report):
     """/blind-product hands back the same page whatever the query does, so the
     timing test has to be the one that proves it."""

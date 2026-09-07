@@ -38,9 +38,10 @@ Phase 1, in progress.
 - [x] http client with rate limit and timing
 - [x] crawler
 - [x] local test target
-- [ ] detectors
-- [ ] validators
-- [ ] cvss scoring
+- [x] authentication, sessions and logged out recovery
+- [x] detectors, sql injection and cross site scripting
+- [x] validators, true/false, timing and headless browser
+- [x] cvss v3.1 scoring, cwe and owasp mapping
 - [ ] evidence store
 - [ ] pdf report
 - [ ] benchmark against zap

@@ -2,6 +2,7 @@
 from .crawler import Crawler
 from .detectors import sqli, xss
 from .findings import Finding, Verdict
+from .scoring import score_finding
 from .validators import sqli_boolean, sqli_timing, xss_browser
 
 
@@ -16,7 +17,10 @@ class ScanReport:
 
     @property
     def confirmed(self):
-        return self.by_verdict(Verdict.CONFIRMED)
+        """Worst first, because that is the order somebody fixes them in."""
+        return sorted(self.by_verdict(Verdict.CONFIRMED),
+                      key=lambda f: (-(f.score.cvss_score if f.score else 0.0),
+                                     f.point.url, f.point.param))
 
     @property
     def unconfirmed(self):
@@ -97,6 +101,14 @@ def scan(client, scope, start_url):
     xss_findings, xss_candidates = _scan_xss(client, scope, crawl.injection_points,
                                              start_url)
 
-    return ScanReport(crawl,
-                      sqli_findings + xss_findings,
-                      sqli_candidates + xss_candidates)
+    findings = sqli_findings + xss_findings
+
+    # Score what was proved, and only what was proved. Privileges required comes
+    # from whether the scan needed credentials to get here, which is the one
+    # cvss metric this tool can actually observe rather than assume.
+    needed_login = client.auth is not None
+    for finding in findings:
+        if finding.verdict is Verdict.CONFIRMED:
+            finding.score = score_finding(finding.kind, needed_login)
+
+    return ScanReport(crawl, findings, sqli_candidates + xss_candidates)

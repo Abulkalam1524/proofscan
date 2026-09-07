@@ -135,9 +135,13 @@ def cmd_scan(args):
         print(f"Crawled {report.crawl.summary()}")
         print(f"Detector flagged {report.candidates} of them as suspicious\n")
 
-        print("CONFIRMED (proved, goes in the report)")
+        print("CONFIRMED (proved, goes in the report, worst first)")
         for f in report.confirmed:
             print(f"  [{f.kind}] {f.point}")
+            if f.score:
+                print(f"      {f.score.cvss_score} {f.score.severity}  "
+                      f"{f.score.cwe}  {f.score.owasp}")
+                print(f"      {f.score.cvss_vector}")
             print(f"      {f.reason}")
             p = f.evidence["proof"]
             if f.kind == "xss":
