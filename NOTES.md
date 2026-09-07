@@ -81,9 +81,9 @@ Crawled 48 pages, 20 injection points
 Detector flagged 6 of them as suspicious
 
 CONFIRMED
-  /vulnerabilities/brute/     [username]  timing, 10001 ms gap
-  /vulnerabilities/sqli/      [id]        true/false, similarity 0.97
-  /vulnerabilities/sqli_blind/[id]        timing, 10002 ms gap
+  /vulnerabilities/brute/     [username]  true/false, 0.9948 vs floor 1.0000
+  /vulnerabilities/sqli/      [id]        true/false, 0.9687 vs floor 1.0000
+  /vulnerabilities/sqli_blind/[id]        timing, 10001 ms gap
 REJECTED
   /vulnerabilities/fi/ [page], /instructions.php [doc],
   /vulnerabilities/open_redirect/source/info.php [id]
@@ -93,17 +93,19 @@ REJECTED
 ```
 
 **Three real findings on an app I did not write, no false positives.** All three
-are genuine DVWA sql injection. Two of them needed the timing validator, which
-until today had only ever been proved against a lab endpoint I wrote myself.
+are genuine DVWA sql injection, and each is proved by the validator that suits
+it: the two that change the page are proved by the true/false test, the blind
+one by the clock. The timing validator, which until today had only ever been
+proved against a lab endpoint I wrote myself, works on an app I did not.
 
 `brute [password]` is found and correctly not confirmed. DVWA runs the password
 through md5 before it reaches the query, so it genuinely is not injectable. That
 is a correct negative, not a miss, and it is worth saying out loud in the report
 because it looks like a miss until you read the source.
 
-## Five things DVWA broke, and what each one taught
+## Seven things DVWA broke, and what each one taught
 
-Getting from 0 to 3 took five separate fixes. Every one of them was invisible on
+Getting from 0 to 3 took seven separate fixes. Every one of them was invisible on
 the lab app and every one is worth a paragraph in the report.
 
 1. **The crawler dropped submit buttons.** DVWA's sql injection page runs no
@@ -127,6 +129,20 @@ the lab app and every one is worth a paragraph in the report.
    timeout was ten, and the client hung up on a payload that was working
    perfectly. Timing requests now get a much longer timeout, with a time budget
    so one point cannot run away with the whole scan.
+6. **`OR '1'='1'` misses anything that wants exactly one row.** A login check
+   reads "all five users" as failure, the same as "no users", so the true and
+   false responses came back byte identical and a real injection was rejected.
+   `LIMIT 1` gives the true side one row and the false side none. This is what
+   DVWA's brute force page needed, and it was only being caught at all because
+   the timing test happened to rescue it.
+7. **The 0.98 similarity threshold was a guess, and wrong.** Logged in versus
+   rejected on DVWA's brute force page scores 0.9948, because the difference is
+   60 bytes inside a 4.5 kB template. A real difference, thrown away as noise.
+   The threshold is now measured per page instead: ask the same question three
+   times, see how much the page disagrees with itself, and make the true/false
+   pair beat that. Quiet pages set a high bar, noisy ones set a low one, which
+   is the right way round. Anything that looks like a hit is then asked a second
+   time, because a real difference repeats and a fluctuation does not.
 
 Correction to an earlier note in this file: the security level being
 "impossible" was **not** the scanner posting to security.php. It is the cookie

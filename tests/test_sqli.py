@@ -71,7 +71,10 @@ def test_every_confirmed_finding_carries_proof(report):
             assert proof["ranges_separated"]
             assert proof["median_gap_ms"] >= proof["delay_asked_ms"] * 0.8
         else:
-            assert proof["similarity"] < 0.98
+            # the bar is the page's own noise, not a number picked in advance,
+            # and the difference had to show up twice
+            assert proof["similarity"] < proof["threshold"]
+            assert proof["repeat_similarity"] < proof["threshold"]
 
 
 def test_the_blind_endpoint_is_proved_by_the_clock(report):
