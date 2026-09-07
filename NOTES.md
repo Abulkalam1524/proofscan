@@ -13,7 +13,7 @@ Commits so far:
 - `aafa5d5` dvwa as a benchmark target, and the docker fixes
 - `6bbb316` authentication, and stopping the scanner wrecking its own scan
 - `ebf663d` measure the page's own noise instead of guessing a threshold
-- (uncommitted) xss detector and browser validator
+- `f95a42f` xss detector and browser validator
 
 38 tests passing, 80s for the suite. Latest scan of the test app:
 
