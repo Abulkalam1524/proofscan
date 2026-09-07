@@ -20,6 +20,7 @@ app = Flask(__name__)
 ANSWER_KEY = {
     "/product":      {"sqli": True,  "xss": False},   # id goes straight into the query
     "/safe-product": {"sqli": False, "xss": False},   # parameterised
+    "/blind-product":{"sqli": True,  "xss": False},   # injectable, same page every time
     "/login":        {"sqli": True,  "xss": False},
     "/search":       {"sqli": False, "xss": True},    # reflected, not escaped
     "/safe-search":  {"sqli": False, "xss": False},
@@ -57,6 +58,7 @@ def home():
         <ul>
           <li><a href="/product?id=1">Product lookup (weak)</a></li>
           <li><a href="/safe-product?id=1">Product lookup (safe)</a></li>
+          <li><a href="/blind-product?id=1">Product lookup (weak, says nothing)</a></li>
           <li><a href="/search?q=hello">Search (weak)</a></li>
           <li><a href="/safe-search?q=hello">Search (safe)</a></li>
           <li><a href="/comment?q=hello">Comment box (weak)</a></li>
@@ -88,6 +90,33 @@ def safe_product():
         return page("Product", "<h1>No product found</h1>")
     items = "".join(f"<li>{n} - Rs {p}</li>" for n, p in rows)
     return page("Product", f"<h1>Product</h1><ul>{items}</ul>")
+
+
+def sleep_function(seconds):
+    """sqlite has no SLEEP(), so the lab lends it one.
+
+    Every other database ships something like this already, mysql SLEEP(),
+    postgres pg_sleep(), sql server WAITFOR DELAY. Registering it here is what
+    makes /blind-product a real time based target instead of a pretend one.
+    Capped so a payload cannot park the test app for good.
+    """
+    time.sleep(min(float(seconds), 5.0))
+    return 1
+
+
+@app.route("/blind-product")
+def blind_product():
+    # injectable exactly like /product, but the page never changes. no rows, no
+    # error message, no status change, nothing. the true/false test has nothing
+    # to compare here, so this is the one only the clock can catch.
+    pid = request.args.get("id", "1")
+    conn = db()
+    conn.create_function("sleep", 1, sleep_function)
+    try:
+        conn.execute(f"SELECT name FROM products WHERE id = {pid}").fetchall()
+    except Exception:
+        pass                                          # swallowed, on purpose
+    return page("Product", "<h1>Lookup done</h1>")
 
 
 @app.route("/login", methods=["GET", "POST"])

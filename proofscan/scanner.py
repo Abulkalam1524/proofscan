@@ -2,7 +2,7 @@
 from .crawler import Crawler
 from .detectors import sqli
 from .findings import Verdict
-from .validators import sqli_boolean
+from .validators import sqli_boolean, sqli_timing
 
 
 class ScanReport:
@@ -31,10 +31,33 @@ def scan(client, scope, start_url):
     crawl = Crawler(client, scope).crawl(start_url)
 
     findings = []
+    candidates = 0
+
     for point in crawl.injection_points:
         reason = sqli.detect(client, point)
-        if reason is None:
-            continue                      # nothing suspicious, no need to validate
-        findings.append(sqli_boolean.validate(client, point, reason))
 
-    return ScanReport(crawl, findings, candidates=len(findings))
+        boolean = None
+        if reason is not None:
+            candidates += 1
+            boolean = sqli_boolean.validate(client, point, reason)
+            if boolean.verdict is Verdict.CONFIRMED:
+                findings.append(boolean)
+                continue                  # proved already, no need to make it wait
+
+        # the timing test does not wait to be invited by the detector. blind
+        # sqli is the case where the page never changes, so there is nothing for
+        # stage 1 to notice and nothing for the true/false test to compare. if
+        # we only ran this on points the detector flagged we would never see it.
+        if scope.safe_mode:
+            if boolean is not None:
+                findings.append(boolean)
+            continue
+
+        timed = sqli_timing.validate(client, point, reason)
+        if timed.verdict is Verdict.CONFIRMED:
+            findings.append(timed)
+        elif boolean is not None:
+            findings.append(boolean)      # keep the verdict that had a reason behind it
+        # detector saw nothing and the clock saw nothing, so there is nothing to report
+
+    return ScanReport(crawl, findings, candidates)

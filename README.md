@@ -83,6 +83,12 @@ safe endpoints that look vulnerable, which is the point:
 - `/jitter` is randomly slow
 - `/safe-product` and `/safe-search` are the fixed versions
 
+It also has one that works the other way round. `/blind-product` is genuinely
+injectable but returns the same page every time, no error, no missing row,
+nothing. The true/false test cannot prove anything there and rejects it. Only
+the timing test finds it. Running a scan with `--safe-mode`, which skips the
+timing tests, turns it back into a missed bug.
+
 If the scanner flags any of those, the verification stage is broken. `ANSWER_KEY`
 in `app.py` lists what is actually there.
 

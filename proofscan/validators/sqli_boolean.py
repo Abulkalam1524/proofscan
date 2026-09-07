@@ -41,7 +41,7 @@ def validate(client, point, reason):
         except Exception as e:
             return Finding("sqli", point, Verdict.UNCONFIRMED,
                            f"could not complete the test: {e}",
-                           {"detector_reason": reason})
+                           {"detector_reason": reason, "technique": "boolean"})
 
         a = strip_payload(t.body, true_payload)
         b = strip_payload(f.body, false_payload)
@@ -64,6 +64,7 @@ def validate(client, point, reason):
                 f"(similarity {score:.2f})",
                 {
                     "detector_reason": reason,
+                    "technique": "boolean",
                     "proof": attempts[-1],
                     "true_body": t.body[:600],
                     "false_body": f.body[:600],
@@ -72,4 +73,5 @@ def validate(client, point, reason):
 
     return Finding("sqli", point, Verdict.REJECTED,
                    "responses identical for true and false conditions",
-                   {"detector_reason": reason, "attempts": attempts})
+                   {"detector_reason": reason, "technique": "boolean",
+                    "attempts": attempts})

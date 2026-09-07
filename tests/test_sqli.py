@@ -13,9 +13,11 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent / "labs" / "vulnerable_app"))
 from app import ANSWER_KEY  # noqa: E402
 
-from proofscan.config import Scope           # noqa: E402
-from proofscan.http_client import HttpClient  # noqa: E402
-from proofscan.scanner import scan            # noqa: E402
+from proofscan.config import Scope             # noqa: E402
+from proofscan.findings import Verdict         # noqa: E402
+from proofscan.http_client import HttpClient   # noqa: E402
+from proofscan.scanner import scan             # noqa: E402
+from proofscan.validators import sqli_boolean  # noqa: E402
 
 BASE = "http://127.0.0.1:5001"
 
@@ -64,4 +66,37 @@ def test_every_confirmed_finding_carries_proof(report):
         proof = f.evidence.get("proof")
         assert proof, f"no proof stored for {f.point}"
         assert proof["true_payload"] != proof["false_payload"]
-        assert proof["similarity"] < 0.98
+
+        if f.evidence["technique"] == "timing":
+            assert proof["ranges_separated"]
+            assert proof["median_gap_ms"] >= proof["delay_asked_ms"] * 0.8
+        else:
+            assert proof["similarity"] < 0.98
+
+
+def test_the_blind_endpoint_is_proved_by_the_clock(report):
+    """/blind-product hands back the same page whatever the query does, so the
+    timing test has to be the one that proves it."""
+    blind = [f for f in report.confirmed
+             if urlparse(f.point.url).path == "/blind-product"]
+
+    assert blind, "the timing test missed /blind-product"
+    assert blind[0].evidence["technique"] == "timing"
+
+
+def test_the_true_false_test_alone_would_have_missed_it(report):
+    """Why there are two validators and not one.
+
+    Run the true/false test against /blind-product on its own. It has no choice
+    but to reject, because both responses really are identical. Without the
+    timing test that is where a real sql injection would have been written off
+    as a false alarm.
+    """
+    point = next(p for p in report.crawl.injection_points
+                 if urlparse(p.url).path == "/blind-product")
+
+    scope = Scope.from_url(BASE)
+    with HttpClient(scope) as client:
+        alone = sqli_boolean.validate(client, point, "asking the true/false test directly")
+
+    assert alone.verdict is Verdict.REJECTED
