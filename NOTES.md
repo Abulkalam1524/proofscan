@@ -16,8 +16,9 @@ Commits so far:
 - `f95a42f` xss detector and browser validator
 - `5464dbc` the full end to end scan numbers for both targets
 - `559df38` cvss v3.1 scoring, cwe numbers and owasp categories
+- `2e81d71` the sqlite evidence store, and scans/show/diff to read it back
 
-60 tests passing, 83s for the suite.
+88 tests passing, 90s for the suite.
 
 Full scan of the test app, everything switched on, 7 Sep 2026:
 
@@ -64,6 +65,8 @@ one command apart.
 - [x] xss confirmed on dvwa, reflected and both stored, 0 false positives
 - [x] cvss v3.1 base scores, cwe numbers, owasp top 10 2021 categories
 - [x] findings come back worst first, because that is the order they get fixed in
+- [x] sqlite evidence store, a scan outlives the process that ran it
+- [x] `scans`, `show` and `diff` read stored scans back without rescanning
 
 ## DVWA, and the number the auth work has to beat
 
@@ -256,75 +259,76 @@ That PR choice is a simplification and is written down as one. A reflected xss
 behind a login can still be reached by somebody with no account at all, by
 sending the link to a person who has one.
 
-## Next up: the evidence store
+## The evidence store
 
-This is the next thing to build, so here is everything needed to start it
-without reading the whole codebase first.
+Built, `proofscan/store.py`. One sqlite file, `evidence/proofscan.db` by
+default, gitignored because it is generated output and not source. Two full lab
+scans come to 76 kB, so it stays something you can hand in.
 
-**What it is for.** Three things, in order of how much they matter:
+Why it exists, in the order the reasons matter: the pdf report reads from it,
+comparing one scan against the next is impossible without it, and it is the
+evidence half of the project's claim. A proved finding whose proof was printed
+to a terminal and then lost is not much better than a guess.
 
-1. The pdf report reads from it. Findings have to survive the process that made
-   them or the report has to re-run the whole scan to print anything.
-2. Comparing one scan against the next. Did the fix work, did something come
-   back, did the ZAP benchmark shift. That comparison is a result for the
-   report, and it is impossible without stored scans.
-3. It is the *evidence* half of the project's claim. A proved finding whose
-   proof was printed to a terminal and lost is not much better than a guess.
+Two tables. `scans` holds the numbers the report quotes: target, when, how long,
+requests, session recoveries, whether a login was used, whether safe mode was
+on, pages, injection points, candidates, and the page and avoided lists as json.
+`findings` holds one row per finding with the common columns plus the evidence
+dict as a json column, which keeps the three proof shapes without three tables
+of mostly empty columns. Indexed on kind and verdict, cvss, and url and param,
+because those are the four things anything actually queries on.
 
-**Already decided, do not reopen** (these are in the decisions list below):
-SQLite, one file, no server database. `evidence/*.db` is already in .gitignore,
-because the database is generated output and not source.
-
-**What has to go in.** A scan, then its findings. What a finding looks like in
-memory, so the schema does not have to be guessed at:
-
-```
-Finding    kind ("sqli" | "xss"), point, verdict, reason, evidence, score
-Point      url, method, param, source ("query" | "form"), other_params, value
-Score      cvss_vector, cvss_score, severity, cwe, cwe_name, owasp,
-           observed {PR, why}, conventional        # None unless CONFIRMED
-Verdict    CONFIRMED | UNCONFIRMED | REJECTED
-```
-
-`evidence` is a dict whose shape depends on how the finding was proved, and it
-carries `technique` saying which:
+`ScanReport` changed shape to make this work. It used to hold a crawl result and
+a list of findings and nothing else, so printing a scan meant asking the client
+how many requests it had sent, and the client is closed by then. It now copies
+the counters off the client and the settings off the scope, which means the same
+object can be printed, stored, and printed again next week. The verdict buckets
+moved into `FindingsView` in `findings.py`, shared with `StoredScan`, so a scan
+read back out of the file prints through exactly the same code as a live one. If
+the stored copy could not reproduce the live output, the store lost something,
+and that is what most of `test_store.py` is checking.
 
 ```
-boolean   detector_reason, technique, proof{true_payload, false_payload,
-          true_status, false_status, true_length, false_length, similarity,
-          repeat_similarity, noise_floor, threshold}, true_body, false_body
-timing    detector_reason, technique, proof{true_payload, false_payload,
-          samples, true_median_ms, false_median_ms, true_min_ms, false_max_ms,
-          median_gap_ms, delay_asked_ms, ranges_separated, true_ms[], false_ms[]}
-browser   detector_reason, technique, proof{payload, token, variable, read_back}
+python main.py scan http://127.0.0.1:5001     # saves, --no-save to skip
+python main.py scans                          # what is in the file
+python main.py show 1                         # one scan, proofs and all
+python main.py diff 1 2                       # what moved
 ```
 
-Rejected findings carry `attempts[]` instead of `proof`, and that is worth
-storing too: "here is what we tried and why we threw it out" is the sentence
-that makes the false alarm count believable.
+Proved on the lab app, 7 Sep 2026. `show 1` reproduces the live output line for
+line, down to `12 suspicious -> 7 proved, 5 false alarms removed (42%)` and the
+2001 ms timing gap on `/blind-product`.
 
-The shapes differ per technique, so the sane move is one findings table with the
-common columns and the evidence dict as a json column, rather than trying to
-model three proof shapes in sql. Being able to query on kind, verdict, cvss and
-url is what matters.
+**`diff` matches findings on where they are, not on how they were proved.** Kind,
+method, url, param, source. A fix that changes an error message must not read as
+a different bug, and the same parameter caught by the timing test one week and
+the true/false test the next is one finding that is still there rather than one
+fixed and one new. Rejected this time and confirmed last time counts as fixed,
+which is right: the claim is about what can be proved, not about what exists.
 
-**Also worth storing per scan,** because these are the numbers the report quotes
-and they are all on the objects already: target url, when it ran, how long it
-took, `client.request_count`, `client.session_recoveries`, whether a login was
-used, whether safe mode was on, pages crawled, injection points found,
-`crawl.avoided`, and the candidate count.
+Diffing the full lab scan against the safe mode one is a good demonstration and
+a good warning. `/blind-product` reads as FIXED, and it is not fixed, it is
+unlooked for. `diff` says so when the two scans disagree about safe mode,
+because a comparison between runs made under different rules is worse than no
+comparison at all. It does the same when the targets differ.
 
-**Do not store** the payloads' full response bodies beyond what the evidence
-dict already truncates to. The point is a report, not a packet capture, and the
-file has to stay something you can hand in.
+**Rejected findings keep their `attempts[]`.** "Here is what we tried and why we
+threw it out" is the sentence that makes the false alarm count believable, and
+it is the half a scanner normally throws away.
+
+Worth knowing for the pdf stage: `store.load(id)` gives back a `StoredScan` with
+the same attribute names a live `ScanReport` has, so the report generator never
+has to know which one it was handed.
+
 
 ## Next
 
-1. sqlite evidence store, spec above
-2. pdf report, via playwright `page.pdf()`, WeasyPrint is ruled out below
-3. benchmark against owasp zap on dvwa and one other target. not juice shop,
+1. pdf report, via playwright `page.pdf()`, WeasyPrint is ruled out below.
+   Reads a `StoredScan` off `store.load(id)`, so it never runs a scan itself.
+2. benchmark against owasp zap on dvwa and one other target. not juice shop,
    it is an angular spa and the crawler does not run javascript. that is a
    stated limitation in the report, not a bug to fix in the time left.
+   Store both runs and quote the diff.
 
 ## Decisions made, do not redo these
 
@@ -384,6 +388,23 @@ file has to stay something you can hand in.
 - **No ML or AI in the detection path.** The point is proof, not probability.
   If AI is added later it only rewrites report text, never decides a verdict.
 - **SQLite, not a server database.** Single file, portable, nothing to secure.
+- **The evidence dict is one json column, not three proof tables.** A boolean
+  proof, a set of response times and a variable read out of a browser share
+  almost no fields. Three tables would be mostly empty columns holding data that
+  nothing filters on. What does get filtered on is kind, verdict, cvss and url,
+  and those are real indexed columns.
+- **A scan and its findings are written in one transaction.** Half a scan in the
+  file is worse than none, because a scan row with no findings under it reads as
+  a clean target, which is the most expensive way this could go wrong.
+- **Response bodies are stored only as far as the evidence dict already trims
+  them.** 600 bytes each side of a true/false pair. The point is a report, not a
+  packet capture.
+- **A file written by an older schema is refused, not migrated.** A stored scan
+  is evidence, and quietly rewriting evidence to fit a newer schema is the habit
+  this project exists to argue against. Point `--db` at a new file.
+- **Only what the scan observed goes in.** No verdict is recomputed on the way
+  in or out, so what comes back out of the file is what the validators decided
+  at the time, not what today's code would decide.
 - **WeasyPrint is not installed.** It needs GTK on windows and breaks. Use
   playwright's `page.pdf()` for the report instead, chromium is already there.
 - **v1 scope is fixed:** sqli (boolean + timing) and xss. IDOR, command
