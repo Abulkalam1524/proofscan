@@ -137,10 +137,13 @@ def cmd_scan(args):
 
         print("CONFIRMED (proved, goes in the report)")
         for f in report.confirmed:
-            print(f"  {f.point}")
+            print(f"  [{f.kind}] {f.point}")
             print(f"      {f.reason}")
             p = f.evidence["proof"]
-            if f.evidence.get("technique") == "timing":
+            if f.kind == "xss":
+                print(f"      payload: {p['payload']}")
+                print(f"      {p['variable']} came back as {p['read_back']}")
+            elif f.evidence.get("technique") == "timing":
                 print(f"      true : {p['true_payload']}")
                 print(f"             -> {p['true_median_ms']:.0f} ms median, "
                       f"fastest {p['true_min_ms']:.0f} ms")
@@ -156,11 +159,11 @@ def cmd_scan(args):
         if report.unconfirmed:
             print("\nUNCONFIRMED (could not prove either way)")
             for f in report.unconfirmed:
-                print(f"  {f.point}\n      {f.reason}")
+                print(f"  [{f.kind}] {f.point}\n      {f.reason}")
 
         print("\nREJECTED (false alarms, removed)")
         for f in report.rejected:
-            print(f"  {f.point}")
+            print(f"  [{f.kind}] {f.point}")
             print(f"      detector said: {f.evidence.get('detector_reason')}")
             print(f"      but: {f.reason}")
         if not report.rejected:

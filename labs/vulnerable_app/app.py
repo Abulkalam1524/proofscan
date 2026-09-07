@@ -18,7 +18,13 @@ from flask import Flask, Response, request
 app = Flask(__name__)
 
 ANSWER_KEY = {
-    "/product":      {"sqli": True,  "xss": False},   # id goes straight into the query
+    # xss here was not planted. ProofScan found it on 7 Sep 2026 and I had to go
+    # and check before believing it. The error handler below puts the database
+    # error into the page with <pre>{e}</pre>, and sqlite quotes the offending
+    # input back inside that message, so the payload arrives unescaped and runs.
+    # Left in, because an error message echoing input is one of the commonest
+    # ways this happens for real, and because a browser proved it.
+    "/product":      {"sqli": True,  "xss": True},    # id goes straight into the query
     "/safe-product": {"sqli": False, "xss": False},   # parameterised
     "/blind-product":{"sqli": True,  "xss": False},   # injectable, same page every time
     "/login":        {"sqli": True,  "xss": False},

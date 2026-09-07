@@ -33,8 +33,14 @@ def report():
         yield scan(client, scope, BASE)
 
 
+def sqli_only(findings):
+    """The report carries xss findings as well now, and these tests are not
+    about those."""
+    return [f for f in findings if f.kind == "sqli"]
+
+
 def paths_of(findings):
-    return {urlparse(f.point.url).path for f in findings}
+    return {urlparse(f.point.url).path for f in sqli_only(findings)}
 
 
 def expected_sqli_paths():
@@ -62,7 +68,7 @@ def test_validator_rejects_the_planted_traps(report):
 
 def test_every_confirmed_finding_carries_proof(report):
     """A confirmed finding with no evidence attached is not confirmed."""
-    for f in report.confirmed:
+    for f in sqli_only(report.confirmed):
         proof = f.evidence.get("proof")
         assert proof, f"no proof stored for {f.point}"
         assert proof["true_payload"] != proof["false_payload"]
@@ -80,7 +86,7 @@ def test_every_confirmed_finding_carries_proof(report):
 def test_the_blind_endpoint_is_proved_by_the_clock(report):
     """/blind-product hands back the same page whatever the query does, so the
     timing test has to be the one that proves it."""
-    blind = [f for f in report.confirmed
+    blind = [f for f in sqli_only(report.confirmed)
              if urlparse(f.point.url).path == "/blind-product"]
 
     assert blind, "the timing test missed /blind-product"

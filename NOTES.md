@@ -11,9 +11,11 @@ Commits so far:
 - `aa104c5` working notes
 - `2ae5e9f` timing validator for blind sqli
 - `aafa5d5` dvwa as a benchmark target, and the docker fixes
-- (uncommitted) authentication and sessions
+- `6bbb316` authentication, and stopping the scanner wrecking its own scan
+- `ebf663d` measure the page's own noise instead of guessing a threshold
+- (uncommitted) xss detector and browser validator
 
-31 tests passing, 60s for the suite. Latest scan of the test app:
+38 tests passing, 80s for the suite. Latest scan of the test app:
 
 ```
 10 pages, 10 injection points
@@ -50,6 +52,9 @@ one command apart.
 - [x] dangerous forms and links left alone, so the scan cannot wreck itself
 - [x] `--cookie` for apps that keep state there
 - [x] dvwa scanned end to end, 3 real findings, 0 false positives
+- [x] xss detector (stage 1, reflection only, noisy on purpose)
+- [x] xss browser validator (stage 2, chromium, proves the script actually ran)
+- [x] xss confirmed on dvwa, reflected and both stored, 0 false positives
 
 ## DVWA, and the number the auth work has to beat
 
@@ -151,14 +156,49 @@ like the scan had done it. Leaving security.php alone is still right, and
 setup.php genuinely can rebuild the database mid scan, but that was not the
 evidence for it.
 
+## XSS, and what the browser settled
+
+`detectors/xss.py` only asks whether the input comes back. `validators/
+xss_browser.py` decides, by sending a payload that sets one variable to a value
+only this run knows, loading the page in headless chromium and asking the
+browser what that variable holds. Nothing else can set it. There is no inference
+left to argue with.
+
+Lab app: `/search`, `/comment` and `/product` confirmed, `/plain`, `/safe-search`
+and `/jitter` rejected. All six correct.
+
+DVWA, security low:
+
+```
+CONFIRMED  xss_r [name]        reflected
+           xss_s [txtName]     stored, POST
+           xss_s [mtxMessage]  stored, POST
+REJECTED   csp [include]       reflects unescaped, CSP blocks it running
+           cryptography [message], fi [page]
+```
+
+**`csp [include]` is the best single argument in the project.** The payload comes
+back completely unescaped. Anything deciding from the response body calls that a
+vulnerability. It is not one, because the page sends a Content-Security-Policy
+header and the browser refuses to run the script. Only actually running it can
+tell those two apart, and that is the whole thesis in one endpoint.
+
+`/product` on the lab app was **not planted**. ProofScan found it and I had to go
+and check before believing it: the error handler puts the sqlite error into the
+page with `<pre>{e}</pre>`, and sqlite quotes the offending input back inside
+that message, so the payload arrives unescaped and runs. ANSWER_KEY was wrong and
+has been corrected. Error messages echoing input is one of the commonest ways
+this happens for real.
+
+Known limitation: DOM based xss is not detected. `xss_d` on DVWA is invisible to
+the detector because the payload never appears in the server's response at all,
+it is handled entirely in javascript. Finding those means watching the DOM rather
+than the response, which is phase 2. Say it in the report rather than let someone
+find it.
+
 ## Next
 
-1. **xss detector + browser validator** - `detectors/xss.py`,
-   `validators/xss_browser.py`. Payload sets a unique window variable, load the
-   page in headless chromium, check `window.__proof`. Must confirm `/search` and
-   `/comment`, must reject `/plain`, which reflects the payload but returns
-   text/plain so nothing runs. Chromium is already installed.
-2. cvss v3.1 scoring and cwe mapping
+1. cvss v3.1 scoring and cwe mapping
 3. sqlite evidence store
 4. pdf report
 5. benchmark against owasp zap on dvwa and one other target. not juice shop,
