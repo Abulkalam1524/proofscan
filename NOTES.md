@@ -15,19 +15,24 @@ Commits so far:
 - `ebf663d` measure the page's own noise instead of guessing a threshold
 - `f95a42f` xss detector and browser validator
 
-38 tests passing, 80s for the suite. Latest scan of the test app:
+38 tests passing, 80s for the suite.
+
+Full scan of the test app, everything switched on, 7 Sep 2026:
 
 ```
 10 pages, 10 injection points
-detector flagged 6
-  confirmed  /product [id], /login [username], /login [password]
-             /blind-product [id]   <- timing test, the true/false test rejected it
-  rejected   /safe-product [id], /jitter [id]
-6 suspicious -> 4 proved, 2 false alarms removed (33%)
-123 requests, 43s
+12 suspicious -> 7 proved, 5 false alarms removed (42%)
+195 requests, 59s
+
+confirmed  sqli  /product [id], /login [username], /login [password]
+                 /blind-product [id]    <- timing, the true/false test rejected it
+           xss   /search [q], /comment [q], /product [id]
+rejected   sqli  /safe-product [id], /jitter [id]
+           xss   /safe-search [q], /plain [q], /jitter [id]
 ```
 
-That matches ANSWER_KEY exactly. No false positives, no false negatives on sqli.
+Matches ANSWER_KEY exactly. No false positives, no false negatives, on either
+vulnerability class.
 
 Worth keeping for the report: with `--safe-mode` the timing tests are skipped and
 `/blind-product` comes out REJECTED, a real bug written off as a false alarm.
@@ -79,23 +84,39 @@ First crawl of DVWA, 7 Sep 2026, before any authentication support existed:
 One request, nothing found. `/` answers 302 to `/login.php`, redirects were off,
 so the crawler got a redirect with no html in it, found no links and stopped.
 
-After the authentication work, same target, same day:
+Full scan of DVWA, everything switched on, 7 Sep 2026. **This is the number for
+the report.**
 
 ```
-Crawled 48 pages, 20 injection points
-Detector flagged 6 of them as suspicious
+48 pages, 20 injection points
+12 suspicious -> 6 proved, 6 false alarms removed (50%)
+364 requests, 2m 45s
 
 CONFIRMED
-  /vulnerabilities/brute/     [username]  true/false, 0.9948 vs floor 1.0000
-  /vulnerabilities/sqli/      [id]        true/false, 0.9687 vs floor 1.0000
-  /vulnerabilities/sqli_blind/[id]        timing, 10001 ms gap
+  sqli  brute      [username]  true/false, 0.9948 against a floor of 1.0000
+  sqli  sqli       [id]        true/false, 0.9687
+  sqli  sqli_blind [id]        timing, 10001 ms gap, ranges never overlap
+  xss   xss_r      [name]      script ran in chromium
+  xss   xss_s      [txtName]   script ran in chromium, stored, POST
+  xss   xss_s      [mtxMessage]script ran in chromium, stored, POST
 REJECTED
-  /vulnerabilities/fi/ [page], /instructions.php [doc],
-  /vulnerabilities/open_redirect/source/info.php [id]
-
-6 suspicious -> 3 proved, 3 false alarms removed (50%)
-320 requests
+  sqli  fi [page], instructions.php [doc], open_redirect info.php [id]
+  xss   fi [page], csp [include], cryptography [message]
 ```
+
+Every one of the six confirmed is a genuine DVWA vulnerability and every one of
+the six rejected is genuinely not one. **No false positives and no false
+negatives inside the v1 scope**, with one exception written up below.
+
+Coverage against what DVWA actually has, in scope:
+
+- sql injection: sqli, sqli_blind, brute. All three found.
+- xss: xss_r, xss_s found. **xss_d not found**, it is DOM based, see below.
+
+Out of scope by design and correctly left alone: command injection, file
+inclusion, csrf, file upload, weak session ids, open redirect. `fi [page]` is a
+real file inclusion bug and gets rejected here, which is right, because it is
+not sql injection and not xss and this is a v1 scanner for those two.
 
 **Three real findings on an app I did not write, no false positives.** All three
 are genuine DVWA sql injection, and each is proved by the validator that suits
