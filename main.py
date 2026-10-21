@@ -14,10 +14,12 @@ Every scan is stored. Reading them back:
     python main.py show 3             # one scan, printed from the file
     python main.py diff 2 3           # what moved between two scans
     python main.py report 3           # one scan, as a pdf
+    python main.py web                # the web interface, http://127.0.0.1:8000
 """
 import argparse
 import os
 import sys
+from pathlib import Path
 
 from proofscan.auth import FormLogin
 from proofscan.config import Scope
@@ -303,6 +305,28 @@ def cmd_report(args):
     return 0
 
 
+def cmd_web(args):
+    """Open the web interface. Replaying stored scans needs nothing else running."""
+    from web.app import create_app
+
+    # work from the project folder whatever folder this was started from, so the
+    # evidence file and the pdfs land where the rest of the tool expects them.
+    # the db path is resolved first, so a relative --db keeps its meaning.
+    db = Path(args.db).resolve()
+    os.chdir(Path(__file__).resolve().parent)
+
+    app = create_app(db_path=db, allow_any=args.allow_any)
+    print(f"ProofScan web interface -> http://127.0.0.1:{args.port}")
+    print(f"evidence file: {db}")
+    if args.allow_any:
+        print("[!] --allow-any: non-local targets are accepted. Only scan what "
+              "you have written permission to test.")
+    # bound to loopback only, for the same reason the lab target is. the page
+    # can start scans, and nobody else on the network should be able to.
+    app.run(host="127.0.0.1", port=args.port, debug=False, threaded=True)
+    return 0
+
+
 def cmd_diff(args):
     with EvidenceStore(args.db) as store:
         try:
@@ -384,6 +408,14 @@ def main():
                      help="keep the rendered html beside the pdf")
     add_db_arg(rep)
     rep.set_defaults(func=cmd_report)
+
+    web = sub.add_parser("web", help="open the web interface")
+    web.add_argument("--port", type=int, default=8000)
+    web.add_argument("--allow-any", action="store_true",
+                     help="accept targets that are not on this machine. only "
+                          "with written permission to test them")
+    add_db_arg(web)
+    web.set_defaults(func=cmd_web)
 
     diff = sub.add_parser("diff", help="compare two stored scans")
     diff.add_argument("before", type=int)

@@ -79,6 +79,13 @@ python main.py diff 1 2       # what was fixed, what is new, what is still there
 python main.py report 1       # one scan, as a pdf
 ```
 
+Or open the web interface, which shows the same results on one page and can
+replay any stored scan instantly, with nothing else running:
+
+```
+python main.py web            # http://127.0.0.1:8000
+```
+
 The pdf is written from the stored scan and never re-runs anything. It carries
 the proof behind every confirmed finding, the CVSS score with a note saying
 which metric was observed and which came from the class, and the candidates that

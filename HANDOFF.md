@@ -55,9 +55,10 @@ whole risk.
 | SQLite evidence store | `proofscan/store.py` | Done |
 | PDF report | `proofscan/report.py` + `templates/` | Done |
 | ZAP benchmark harness | `benchmark/` | Done |
+| Web interface (demo) | `web/` | Done, 22 Oct |
 
-~2,500 lines of scanner, ~1,500 lines of tests. **142 tests passing**, 4 skipped
-when DVWA is down. Suite takes ~90s.
+~2,800 lines of scanner and web UI, ~1,900 lines of tests. **171 tests passing**,
+4 skipped when DVWA is down. Suite takes ~80s.
 
 Repo: https://github.com/Abulkalam1524/proofscan (**5 commits unpushed as of
 22 Oct — push them**).
@@ -123,7 +124,7 @@ no such rule.
 | **Dissertation document** | The deliverable | **0 pages** |
 | Broken access control / IDOR | Slide 5, one of three headline techniques | Not built |
 | Screenshot evidence per finding | Slide 3 obj. 5, and slide 5 | Not built |
-| Flask dashboard | Slide 7, tools list | Not built |
+| Flask dashboard | Slide 7, tools list | **Built 22 Oct**, `web/`, see section 8 |
 | 4 targets (DVWA, Juice Shop, WebGoat, bWAPP) | Slide 8 | DVWA + own lab only |
 | Final presentation | Viva | Proposal deck only |
 
@@ -152,12 +153,18 @@ classes and a rushed one.
 4. **Re-run DVWA benchmark 3×, 2 h**, with the change-password page excluded, so
    the Results chapter can say the numbers are stable and the target never moved.
 
+5. **Rehearse the demo twice on a cold machine** (section 8). Find out in your
+   own room that Docker takes minutes to start, not in theirs.
+
 **Cut, and say so in writing as future work:**
 - Broken access control (10–12 h). **Write the scope reduction deliberately** —
   slide 5 promises three techniques and the demo shows two. Do not leave that
   gap for an examiner to find.
-- Flask dashboard.
 - WebGoat / bWAPP, unless everything above is finished early.
+
+The web interface was originally on the cut list. It came back once it was
+clear the instructors are not security specialists and judge by watching: for
+that audience the demo is the grading surface, and a terminal is a poor one.
 
 ---
 
@@ -203,8 +210,9 @@ python main.py scans                              # list stored scans
 python main.py show 1                             # reprint one from the file
 python main.py diff 1 2                           # what changed between scans
 python main.py report 1                           # PDF to reports/
+python main.py web                                # web UI, http://127.0.0.1:8000
 
-pytest -q                                         # 142 tests, ~90s
+pytest -q                                         # 171 tests, ~80s
 ```
 
 DVWA (Docker Desktop must be started **by hand** first):
@@ -244,3 +252,48 @@ python -m benchmark --scan 3 --zap reports/zap-dvwa.json --key dvwa
 - **WebGoat 2023.8 will not run** on the JDKs on this machine (XNIO provider
   fails on Java 19/21, wants JDK 17). Use Docker if it is needed at all.
 - Commits must **not** carry AI attribution trailers.
+
+---
+
+## 8. The demo
+
+The instructors are not security specialists and understand by watching, so the
+demo matters as much as the document. `python main.py web`, then open
+http://127.0.0.1:8000.
+
+**Replay first, always.** "Replay a saved scan" reads the evidence file and shows
+a full scan instantly with nothing else running: no Docker, no target, no wait.
+A live scan takes ~45s on the lab app and ~3 min on DVWA, mostly the timing test
+waiting on purpose, and depends on Docker, the target and Chromium all working on
+the day. Use live scanning as a bonus if the room cooperates, never as the plan.
+
+Stored scans to demo from (in `evidence/proofscan.db`):
+- **#3 — DVWA**, logged in: 12 suspicious, 6 proved, 6 thrown out. Contains the
+  CSP finding.
+- **#4 — lab app**, scanned through the web UI on 22 Oct: 12 suspicious, 7
+  proved, 5 thrown out, 42%. Contains `/plain`.
+
+The story, which needs no security knowledge to follow:
+1. "Here is a website with a search box." Show the lab app.
+2. "A normal scanner says there might be a problem in 12 places." The funnel.
+3. Open the thrown-out `/plain` card. "Our text came back on the page, word for
+   word. It looks broken. It isn't — the page sends it as plain text, so the
+   browser shows it as words instead of running it."
+4. "ProofScan opened a real browser and checked whether the code ran. It didn't,
+   so it threw this one away." Point at the five attempts, each "nothing ran".
+5. Open a PROVED card. "Here the code did run, and here is the proof."
+6. "Download the PDF report." The document it writes.
+7. Close on DVWA scan #3, the CSP card: **ZAP, the standard professional tool,
+   reports this as a High risk vulnerability. It is not one. ProofScan proves
+   it.**
+
+Use the XSS examples, not SQL injection. "The browser refused to run it" is
+intuitive. "The database evaluated the injected condition" is not.
+
+Safety built in, worth saying out loud in the viva: the web UI refuses any
+target that is not on this machine (IT Act 2000), unless started with
+`--allow-any`, and it binds to 127.0.0.1 so nobody else on the network can use
+it to start scans. It displays working XSS payloads without ever running them:
+every value goes in as text, never parsed as html, and a test fails if that
+ever changes.
+

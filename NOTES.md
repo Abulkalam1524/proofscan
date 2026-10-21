@@ -19,6 +19,7 @@ Commits so far:
 - `2e81d71` the sqlite evidence store, and scans/show/diff to read it back
 - `8c982f3` the pdf report
 - `a9a00cb` the zap benchmark harness, answer keys, and the runner
+- the web interface, 22 Oct
 
 115 tests passing, 90s for the suite.
 
@@ -503,6 +504,46 @@ produced against a stable target is worth twenty minutes.
 Still to do on the benchmark: run it three times rather than once. One run is an
 anecdote. Three runs and a sentence saying whether the numbers moved is half an
 hour and makes the result a measurement.
+
+## The web interface
+
+Built 22 Oct 2026, `web/app.py` and `web/templates/index.html`, started with
+`python main.py web` on http://127.0.0.1:8000. It closes the Flask dashboard
+promise on slide 7.
+
+It was on the cut list until it became clear who is marking this. The
+instructors are not security specialists and understand by watching, which makes
+the demo the grading surface, and a terminal is a poor one for that audience.
+
+**Replay is the main path.** Stored scans load instantly from the evidence file
+with nothing else running. A live scan is ~45s on the lab app and ~3 min on DVWA,
+and needs Docker, the target and Chromium all working at once. The evidence store
+was built so findings outlive the process that made them. It turns out that is
+also what makes the demo safe.
+
+Nothing on the page is computed fresh. The proof rows come from `proof_rows` and
+`attempt_rows` in `report.py`, the same helpers the pdf uses, so the screen and
+the document cannot disagree. Live progress is the http client's real request
+count, read while the scan runs on a thread, not a bar moving on a timer.
+
+Three safety rules, each with a test:
+
+- **Local targets only.** Anything not loopback is refused with a 403 that cites
+  the IT Act 2000, including private addresses like 10.x, which are somebody's
+  machine on the network. `--allow-any` lifts it, deliberately.
+- **Bound to 127.0.0.1**, same as the lab target. The page can start scans and
+  nobody else on the network should be able to.
+- **No payload is ever parsed as html.** The page displays working xss payloads,
+  so every value goes in with textContent. `test_web.py` fails if innerHTML,
+  outerHTML, insertAdjacentHTML or document.write appear anywhere in the
+  template. Checked live as well: with every proved xss card open, the variable
+  every payload sets when it runs, `window.__proofscan_xss`, is undefined.
+
+Scanned the lab app end to end through the page on 22 Oct: 12 suspicious, 7
+proved, 5 thrown out, 42%. Identical to the cli. Stored as scan 4.
+
+Gotcha: Flask caches templates when debug is off, so a running server keeps
+serving the old page after an edit. Restart it.
 
 ## Next
 

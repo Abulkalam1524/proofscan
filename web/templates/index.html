@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ProofScan</title>
+<style>
+  /* Built for a projector: large type, strong contrast, colour that means
+     something. Nothing loaded from the internet, so it works in a room with no
+     network. */
+  :root {
+    --ink: #14181f; --muted: #5b6472; --line: #dfe3ea; --ground: #f4f6f9;
+    --card: #ffffff; --accent: #2348a8;
+    --proved: #17804f; --proved-soft: #e3f4ea;
+    --out: #6b7280;    --out-soft: #eef0f3;
+    --unsure: #a86b00; --unsure-soft: #fdf3dd;
+    --Critical: #a3231c; --High: #c05621; --Medium: #9a7317; --Low: #45688f;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--ground); color: var(--ink);
+         font: 17px/1.5 "Segoe UI", Helvetica, Arial, sans-serif; }
+  /* overflow-wrap rather than word-break: long payloads and urls still wrap,
+     but ordinary sentences break at spaces instead of mid word */
+  code, .mono { font-family: Consolas, "Courier New", monospace; font-size: .88em;
+                overflow-wrap: anywhere; }
+
+  header { background: var(--ink); color: #fff; padding: 18px 32px;
+           display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; }
+  header h1 { margin: 0; font-size: 26px; letter-spacing: .5px; }
+  header p { margin: 0; color: #b7c0cf; font-size: 16px; }
+
+  main { max-width: 1180px; margin: 0 auto; padding: 24px 24px 60px; }
+
+  .controls { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+              gap: 18px; }
+  @media (max-width: 860px) { .controls { grid-template-columns: 1fr; } }
+  .panel { min-width: 0; background: var(--card); border: 1px solid var(--line);
+           border-radius: 10px; padding: 18px 20px; }
+  .panel h2 { margin: 0 0 4px; font-size: 18px; }
+  .panel p.hint { margin: 0 0 12px; color: var(--muted); font-size: 15px; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  select, input[type=text] { flex: 1 1 0; min-width: 0; width: 100%; font: inherit;
+           padding: 10px 12px; border: 1px solid #c4cbd6; border-radius: 7px; }
+  button { flex: none; font: inherit; font-weight: 600; padding: 10px 20px; border: 0;
+           border-radius: 7px; background: var(--accent); color: #fff;
+           cursor: pointer; }
+  button:disabled { opacity: .5; cursor: default; }
+  button.ghost { background: #fff; color: var(--accent);
+                 border: 1px solid var(--accent); }
+  label.check { color: var(--muted); font-size: 15px; display: flex; gap: 6px;
+                align-items: center; }
+
+  .notice { margin-top: 18px; padding: 14px 18px; border-radius: 8px;
+            background: #fff4f2; border: 1px solid #f1c4bd; color: #8a2216; }
+  .progress { margin-top: 18px; background: var(--card); border-radius: 10px;
+              border: 1px solid var(--line); padding: 18px 20px;
+              display: flex; gap: 18px; align-items: center; }
+  .spinner { width: 28px; height: 28px; border-radius: 50%;
+             border: 4px solid #cfd8ea; border-top-color: var(--accent);
+             animation: spin 1s linear infinite; flex: none; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  #results { margin-top: 26px; }
+  .target-line { display: flex; justify-content: space-between; gap: 12px;
+                 align-items: flex-end; flex-wrap: wrap; margin-bottom: 14px; }
+  .target-line h2 { margin: 0; font-size: 22px; }
+  .target-line .meta { color: var(--muted); font-size: 15px; }
+
+  .funnel { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
+            margin-bottom: 8px; }
+  @media (max-width: 760px) { .funnel { grid-template-columns: repeat(2, 1fr); } }
+  .stat { background: var(--card); border: 1px solid var(--line);
+          border-radius: 10px; padding: 14px 16px; text-align: center; }
+  .stat .n { font-size: 40px; font-weight: 700; line-height: 1.1; }
+  .stat .l { color: var(--muted); font-size: 14px; text-transform: uppercase;
+             letter-spacing: .6px; }
+  .stat.proved .n { color: var(--proved); }
+  .stat.out .n { color: var(--out); }
+  .funnel-note { color: var(--muted); font-size: 15px; margin: 6px 0 22px; }
+
+  section.group { margin-top: 26px; }
+  section.group > h3 { margin: 0 0 4px; font-size: 20px; display: flex;
+                       gap: 10px; align-items: center; }
+  section.group > p { margin: 0 0 12px; color: var(--muted); font-size: 15px; }
+
+  .badge { display: inline-block; padding: 3px 10px; border-radius: 5px;
+           font-size: 13px; font-weight: 700; letter-spacing: .6px; color: #fff; }
+  .badge.CONFIRMED { background: var(--proved); }
+  .badge.REJECTED { background: var(--out); }
+  .badge.UNCONFIRMED { background: var(--unsure); }
+  .sev { display: inline-block; padding: 3px 9px; border-radius: 5px;
+         color: #fff; font-size: 14px; font-weight: 700; white-space: nowrap; }
+
+  .finding { background: var(--card); border: 1px solid var(--line);
+             border-left: 6px solid var(--out); border-radius: 9px;
+             margin-bottom: 10px; overflow: hidden; }
+  .finding.CONFIRMED { border-left-color: var(--proved); }
+  .finding.UNCONFIRMED { border-left-color: var(--unsure); }
+  .finding summary { list-style: none; cursor: pointer; padding: 14px 18px;
+                     display: grid; grid-template-columns: 1fr auto; gap: 6px 14px;
+                     align-items: center; }
+  .finding summary::-webkit-details-marker { display: none; }
+  .finding .what { font-weight: 700; font-size: 18px; }
+  .finding .plain { color: var(--muted); font-size: 15px; font-weight: 400; }
+  .finding .where { grid-column: 1 / -1; color: #2f3846; }
+  .finding .why { grid-column: 1 / -1; font-size: 15px; }
+  .finding .why b { color: var(--muted); font-weight: 600; }
+  .finding .open { grid-column: 1 / -1; color: var(--accent); font-size: 14px; }
+  .finding[open] .open::after { content: " (click to hide)"; }
+  .finding:not([open]) .open::after { content: " (click to see it)"; }
+
+  .detail { border-top: 1px solid var(--line); padding: 14px 18px 18px;
+            background: #fbfcfd; }
+  .detail h4 { margin: 12px 0 6px; font-size: 14px; color: var(--muted);
+               text-transform: uppercase; letter-spacing: .6px; }
+  .detail h4:first-child { margin-top: 0; }
+  table.rows { width: 100%; border-collapse: collapse; font-size: 15px; }
+  table.rows td, table.rows th { padding: 7px 10px; border-bottom: 1px solid #e8ebf0;
+                                 text-align: left; vertical-align: top; }
+  table.rows th { background: #f1f3f6; font-size: 14px; }
+  table.rows td.k { width: 30%; color: var(--muted); }
+  .caveat { margin-top: 12px; background: #f3f5f8; border-left: 3px solid #b8c0cc;
+            padding: 10px 12px; font-size: 14px; color: #3d4654; }
+  .empty { color: var(--muted); font-style: italic; }
+  .actions { margin-top: 30px; display: flex; gap: 12px; flex-wrap: wrap; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>ProofScan</h1>
+  <p>Finds website vulnerabilities, then proves each one is real.</p>
+</header>
+
+<main>
+  <div class="controls">
+    <div class="panel">
+      <h2>Replay a saved scan</h2>
+      <p class="hint">Instant. Reads proved results from the evidence file, so
+        nothing needs to be running.</p>
+      <div class="row">
+        <select id="saved"><option>Loading saved scans...</option></select>
+        <button id="load">Show</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Scan a target now</h2>
+      <p class="hint">Takes about a minute. {% if not allow_any %}Local targets
+        only.{% endif %}</p>
+      <div class="row">
+        <input type="text" id="target" value="http://127.0.0.1:5001"
+               spellcheck="false" autocomplete="off">
+        <button id="scan">Scan</button>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <label class="check"><input type="checkbox" id="safe">
+          Safe mode (skip the slow timing tests)</label>
+      </div>
+    </div>
+  </div>
+
+  <div id="notice" class="notice" hidden></div>
+
+  <div id="progress" class="progress" hidden>
+    <div class="spinner"></div>
+    <div>
+      <strong id="progress-title">Scanning</strong>
+      <div id="progress-text" style="color:var(--muted)"></div>
+    </div>
+  </div>
+
+  <div id="results" hidden></div>
+</main>
+
+<script>
+// Every piece of scan data goes into the page with textContent, never parsed
+// as html. This page shows working cross site scripting payloads on purpose,
+// and a security tool whose own screen runs the exploit it is reporting would
+// be the worst possible demo.
+function el(tag, props, ...children) {
+  const node = document.createElement(tag);
+  for (const [key, value] of Object.entries(props || {})) {
+    if (key === "class") node.className = value;
+    else if (key === "text") node.textContent = value;
+    else node.setAttribute(key, value);
+  }
+  for (const child of children.flat()) {
+    if (child == null || child === false) continue;
+    node.append(typeof child === "string" ? document.createTextNode(child) : child);
+  }
+  return node;
+}
+
+const $ = id => document.getElementById(id);
+
+// Said in plain words, because the people watching are not security people.
+const KINDS = {
+  sqli: ["SQL injection", "the website's database ran something we typed"],
+  xss:  ["Cross site scripting", "the browser ran code we typed into the page"],
+};
+
+function notice(message) {
+  $("notice").textContent = message;
+  $("notice").hidden = !message;
+}
+
+async function getJSON(url, options) {
+  const response = await fetch(url, options);
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body.error || `request failed (${response.status})`);
+  return body;
+}
+
+async function loadSaved(selectId) {
+  const scans = await getJSON("/api/scans");
+  const select = $("saved");
+  select.replaceChildren();
+  if (!scans.length) {
+    select.append(el("option", {text: "No saved scans yet. Run one first."}));
+    $("load").disabled = true;
+    return;
+  }
+  $("load").disabled = false;
+  for (const s of scans) {
+    const when = s.started_at.slice(0, 16).replace("T", " ");
+    const notes = [s.authenticated ? "logged in" : "", s.safe_mode ? "safe mode" : ""]
+      .filter(Boolean).join(", ");
+    const label = `#${s.id}  ${s.target}  -  ${s.confirmed} proved, ` +
+                  `${s.rejected} thrown out  -  ${when}${notes ? "  (" + notes + ")" : ""}`;
+    select.append(el("option", {value: s.id, text: label}));
+  }
+  if (selectId) select.value = selectId;
+}
+
+function proofTable(rows, headers) {
+  const table = el("table", {class: "rows"});
+  if (headers) table.append(el("tr", {}, headers.map(h => el("th", {text: h}))));
+  for (const [a, b] of rows) {
+    table.append(el("tr", {},
+      el("td", {class: headers ? "mono" : "k", text: a}),
+      el("td", {class: headers ? "" : "mono", text: b})));
+  }
+  return table;
+}
+
+function findingCard(f) {
+  const [name, plain] = KINDS[f.kind] || [f.kind, ""];
+  const summary = el("summary", {},
+    el("div", {class: "what"},
+      el("span", {class: `badge ${f.verdict}`,
+        text: {CONFIRMED: "PROVED", REJECTED: "THROWN OUT",
+               UNCONFIRMED: "NOT SURE"}[f.verdict]}),
+      "  ", name, "  ",
+      el("span", {class: "plain", text: plain ? `(${plain})` : ""})),
+    f.score ? el("span", {class: "sev", style: `background:var(--${f.score.severity})`,
+                          text: `${f.score.cvss} ${f.score.severity}`}) : el("span"),
+    el("div", {class: "where"},
+      el("span", {class: "mono", text: `${f.method} ${f.url}`}),
+      "   input box: ", el("strong", {class: "mono", text: f.param})));
+
+  if (f.verdict === "REJECTED") {
+    summary.append(el("div", {class: "why"},
+      el("b", {text: "Looked suspicious because: "}), f.detector_reason || "",
+      el("br"),
+      el("b", {text: "Thrown out because: "}), f.reason));
+  } else {
+    summary.append(el("div", {class: "why"}, f.reason));
+  }
+  summary.append(el("div", {class: "open",
+    text: f.verdict === "CONFIRMED" ? "The proof" : "What was tried"}));
+
+  const detail = el("div", {class: "detail"});
+  if (f.proof.length) {
+    detail.append(el("h4", {text: "The proof"}), proofTable(f.proof));
+  }
+  if (f.score) {
+    detail.append(el("h4", {text: "Score"}), proofTable([
+      ["CVSS v3.1", f.score.vector],
+      ["Weakness", f.score.cwe],
+      ["OWASP Top 10", f.score.owasp],
+    ]));
+    if (f.score.not_proved) {
+      detail.append(el("div", {class: "caveat"},
+        el("strong", {text: "What this does not prove. "}), f.score.not_proved));
+    }
+  }
+  if (f.attempts.length) {
+    detail.append(el("h4", {text: "What was tried"}),
+                  proofTable(f.attempts, ["What was sent", "What came back"]));
+  }
+  if (!detail.children.length) {
+    detail.append(el("p", {class: "empty", text: "No further detail recorded."}));
+  }
+
+  return el("details", {class: `finding ${f.verdict}`}, summary, detail);
+}
+
+function group(title, explanation, findings, verdict) {
+  const section = el("section", {class: "group"},
+    el("h3", {}, el("span", {class: `badge ${verdict}`, text: String(findings.length)}),
+      title),
+    el("p", {text: explanation}));
+  if (!findings.length) section.append(el("p", {class: "empty", text: "None."}));
+  findings.forEach(f => section.append(findingCard(f)));
+  return section;
+}
+
+function stat(n, label, cls) {
+  return el("div", {class: `stat ${cls || ""}`},
+    el("div", {class: "n", text: String(n)}),
+    el("div", {class: "l", text: label}));
+}
+
+function render(scan) {
+  const t = scan.tally;
+  const minutes = scan.duration >= 60
+    ? `${Math.floor(scan.duration / 60)}m ${scan.duration % 60}s` : `${scan.duration}s`;
+  const settings = [scan.authenticated ? "logged in" : "",
+                    scan.safe_mode ? "safe mode, timing tests skipped" : ""]
+    .filter(Boolean).join(", ");
+
+  const results = $("results");
+  results.replaceChildren(
+    el("div", {class: "target-line"},
+      el("div", {},
+        el("div", {class: "meta", text: `Scan #${scan.id}`}),
+        el("h2", {class: "mono", text: scan.target})),
+      el("div", {class: "meta",
+        text: `${scan.pages} pages, ${scan.injection_points} input boxes, ` +
+              `${scan.requests} requests, ${minutes}` +
+              (settings ? `  (${settings})` : "")})),
+
+    el("div", {class: "funnel"},
+      stat(t.candidates, "looked suspicious"),
+      stat(scan.confirmed.length, "proved real", "proved"),
+      stat(t.rejected, "proved false, thrown out", "out"),
+      stat(`${Math.round(t.removed_pct)}%`, "false alarms removed")),
+
+    el("p", {class: "funnel-note",
+      text: `A normal scanner would hand all ${t.candidates} suspicious results ` +
+            `to a person to check by hand. ProofScan checked them itself.` +
+            (t.blind ? ` It also found ${t.blind} the first stage could not see ` +
+                       `at all, using the timing test.` : "")}),
+
+    group("Proved real",
+      "Each of these was demonstrated against the running website. Click one to see the proof.",
+      scan.confirmed, "CONFIRMED"),
+
+    scan.unconfirmed.length ? group("Not sure",
+      "These could not be proved either way, usually because something needed was unavailable.",
+      scan.unconfirmed, "UNCONFIRMED") : null,
+
+    group("Looked suspicious, proved false",
+      "A normal scanner would report every one of these. ProofScan tested each and threw it out.",
+      scan.rejected, "REJECTED"),
+
+    el("div", {class: "actions"},
+      el("a", {href: `/api/report/${scan.id}`},
+        el("button", {text: "Download the PDF report"}))));
+
+  results.hidden = false;
+  results.scrollIntoView({behavior: "smooth", block: "start"});
+}
+
+async function showScan(id) {
+  notice("");
+  render(await getJSON(`/api/scan/${id}`));
+}
+
+$("load").addEventListener("click", () => showScan($("saved").value).catch(e => notice(e.message)));
+
+$("scan").addEventListener("click", async () => {
+  notice("");
+  $("results").hidden = true;
+  $("scan").disabled = true;
+  try {
+    let job = await getJSON("/api/scan", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({target: $("target").value, safe_mode: $("safe").checked}),
+    });
+    $("progress").hidden = false;
+    $("progress-title").textContent = `Scanning ${job.target}`;
+
+    while (job.state === "running") {
+      $("progress-text").textContent =
+        `${job.requests} requests sent, ${Math.round(job.elapsed)}s so far. ` +
+        `The timing tests wait on purpose, that is the slow part.`;
+      await new Promise(r => setTimeout(r, 1000));
+      job = await getJSON(`/api/job/${job.id}`);
+    }
+
+    $("progress").hidden = true;
+    if (job.state === "failed") throw new Error(`The scan failed: ${job.error}`);
+    await loadSaved(job.scan_id);
+    await showScan(job.scan_id);
+  } catch (e) {
+    $("progress").hidden = true;
+    notice(e.message);
+  } finally {
+    $("scan").disabled = false;
+  }
+});
+
+loadSaved().catch(e => notice(e.message));
+</script>
+</body>
+</html>
