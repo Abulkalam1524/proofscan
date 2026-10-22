@@ -119,6 +119,10 @@
       scans, six weeks apart. ZAP also checks around a hundred kinds of problem that
       ProofScan does not, so this is a trade of coverage for certainty, not a claim
       that ProofScan beats ZAP. Everyone missed DOM-based XSS.</p>
+    <p class="note"><strong>Verify mode</strong> goes one step further: ProofScan
+      takes ZAP's own findings and proves or rejects each one. On DVWA it kept all
+      6 of ZAP's real findings and removed its one false alarm, taking ZAP's
+      precision from 0.86 to 1.00 in 78 requests.</p>
   </section>
 
   <section>
@@ -151,7 +155,7 @@
   <section>
     <h2>Built with</h2>
     <p>Python, Playwright (headless Chromium), Flask, SQLite and Docker. CVSS v3.1
-      scoring with CWE and OWASP Top 10 mapping, PDF reports, and 183 automated
+      scoring with CWE and OWASP Top 10 mapping, PDF reports, and 194 automated
       tests.</p>
   </section>
 </main>

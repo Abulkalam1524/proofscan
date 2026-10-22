@@ -57,8 +57,10 @@ whole risk.
 | ZAP benchmark harness | `benchmark/` | Done |
 | Web interface (demo) | `web/` | Done, 22 Oct |
 
-~2,800 lines of scanner and web UI, ~1,900 lines of tests. **183 tests passing**,
+~2,800 lines of scanner and web UI, ~1,900 lines of tests. **194 tests passing**,
 4 skipped when DVWA is down. Suite takes ~80s.
+
+**Verify mode (22 Oct):** `python main.py verify reports/zap-dvwa-oct22.json --rewrite http://dvwa=http://127.0.0.1:8080 --login-url ... --cookie security=low` proves or rejects ZAP's own findings. DVWA: ZAP's 7 alerts -> 6 proved, CSP rejected, ZAP precision 0.86 -> 1.00, 78 requests (scan 12). Live demo: https://proofscan.pages.dev
 
 Repo: https://github.com/Abulkalam1524/proofscan (**5 commits unpushed as of
 22 Oct — push them**).
@@ -227,7 +229,7 @@ python main.py diff 1 2                           # what changed between scans
 python main.py report 1                           # PDF to reports/
 python main.py web                                # web UI, http://127.0.0.1:8000
 
-pytest -q                                         # 183 tests, ~2 min
+pytest -q                                         # 194 tests, ~2 min
 ```
 
 DVWA (Docker Desktop must be started **by hand** first):
