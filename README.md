@@ -4,6 +4,8 @@ Automated website security testing with self verification and report generation.
 
 B.Tech major project, Group 105, School of Electronics Engineering, KIIT.
 
+![ProofScan replaying a scan of DVWA: 12 suspicious, 6 proved, 6 thrown out](docs/images/demo.gif)
+
 ## The problem
 
 Vulnerability scanners report a lot of things that are not real. Someone has to
@@ -31,6 +33,44 @@ script actually executed. Reflection on its own is not enough.
 
 Every finding ends up as CONFIRMED, UNCONFIRMED (could not prove it safely), or
 REJECTED (proved it is not there).
+
+## What it looks like
+
+Every finding comes with what the browser actually showed.
+
+**Proved SQL injection.** The always-true input logs in, the always-false one
+does not, so the database evaluated what we typed.
+
+![A proved SQL injection on DVWA's brute force page, true and false pages side by side](docs/images/proved-sqli.png)
+
+**Proved XSS.** After the proof, ProofScan sends one more script that draws the
+red box. The picture is kept only if the browser hands back that script's own
+random token.
+
+![A proved XSS on DVWA, with the red box drawn by the injected script](docs/images/proved-xss.png)
+
+**Thrown out.** OWASP ZAP reports this page as High risk XSS. The input does
+come back unescaped, but the page's Content-Security-Policy stopped all five
+payloads from running, so ProofScan threw it out.
+
+![DVWA's CSP page, thrown out because nothing ran](docs/images/thrown-out-csp.png)
+
+## Results
+
+Benchmarked against OWASP ZAP 2.17.0 on DVWA (security level low), scored on SQL
+injection and XSS against a hand-written answer key:
+
+| | Alerts | Correct | False alarms | Missed | Precision | Recall |
+|---|---|---|---|---|---|---|
+| ProofScan, verification off | 12 | 6 | 6 | 1 | 0.50 | 0.86 |
+| ProofScan, verification on | 6 | 6 | 0 | 1 | **1.00** | 0.86 |
+| OWASP ZAP | 7 | 6 | 1 | 1 | 0.86 | 0.86 |
+
+Verification doubles precision with no loss of recall. The numbers were the same
+across four ProofScan scans and two ZAP scans, six weeks apart. ZAP also reported
+89 alerts in classes ProofScan does not look for, so this is a trade of coverage
+for certainty, not a claim that ProofScan beats ZAP. Everyone missed DOM-based
+XSS.
 
 ## Architecture overview
 
@@ -164,6 +204,7 @@ Phase 1, in progress.
 - [x] benchmark against zap
 - [x] web interface
 - [x] screenshot evidence
+- [x] repeat runs, results stable
 
 ## Setup
 
@@ -247,3 +288,7 @@ Scanning a system without permission is an offence under the IT Act, 2000.
 ## Standards
 
 OWASP Top 10 (2021), OWASP WSTG v4.2, CVSS v3.1, CWE, NIST SP 800-115.
+
+## License
+
+MIT, see [LICENSE](LICENSE).
