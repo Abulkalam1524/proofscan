@@ -1,30 +1,9 @@
-"""Stage 2, the timing test. For sql injection that leaves no mark on the page.
+"""Stage 2 timing test, for SQL injection that never changes the page.
 
-Some injectable pages come back looking exactly the same whatever the query
-returns. Errors get swallowed, the same template is rendered every time.
-sqli_boolean has nothing to compare on a page like that, so it rejects it and a
-real bug walks away clean. The clock is the only channel left.
-
-So we ask the database to wait, and check whether the reply actually came back
-late.
-
-One slow reply proves nothing. Servers stall for all sorts of reasons that have
-nothing to do with us. What this does instead is compare two payloads of the
-same shape and the same length whose only difference is a condition, always true
-in one and always false in the other. The sleep sits behind that condition, so
-it is only reached when the condition holds. Both requests parse the same, weigh
-the same and take the same path through the app. A consistent gap between them
-has nothing left to explain it except the database evaluating the condition.
-
-Two things have to hold before this confirms anything:
-
-    the medians are apart by most of the delay we asked for, and
-    the slowest false sample is still quicker than the fastest true one.
-
-The second rule is the one that does the work. /jitter in the test app is
-randomly slow about one request in six. That kind of slowness lands in both sets
-of samples and makes their ranges overlap, so the rule fails. A real sleep never
-overlaps, because every true sample waits and no false sample does.
+Two payloads that differ only in a true or false condition, with a sleep
+behind it. Confirmed only if the medians are far apart and the slowest
+false sample is still quicker than the fastest true one, so random
+slowness (like /jitter) cannot pass.
 """
 import statistics
 
@@ -42,12 +21,8 @@ SAMPLES = 10
 # request that got cut short is not proof of anything.
 MIN_SHARE = 0.8
 
-# A sleep in a where clause can be evaluated once per row, so asking for 2
-# seconds against a table with five rows in it buys ten. The ordinary timeout is
-# 10 seconds and DVWA's blind sql injection landed exactly on it: the payload
-# worked, the server was busy sleeping, and the client hung up before the answer
-# came back. So the timing test asks for a good deal longer than it thinks it
-# needs.
+# A sleep can run once per row (2 s x 5 rows = 10 s on DVWA), so timing
+# requests get a much longer timeout than normal.
 TIMEOUT_HEADROOM = 8
 
 # and because those requests can be slow, cap how long one point may take rather
@@ -58,21 +33,10 @@ SAMPLING_BUDGET_MS = 120_000
 def _timeout_for(delay_seconds):
     return delay_seconds * TIMEOUT_HEADROOM + 5
 
-# Payloads to try, one per database, in both AND and OR form. {cond} gets filled
-# with a condition that is always true and then one that is always false, which
-# is what guarantees the pair can only ever differ there.
-#
-# Both forms are needed because databases stop evaluating a condition as soon as
-# the answer is settled. With AND, if the part before it is false the sleep is
-# never reached. With OR, if the part before it is true the sleep is never
-# reached. Which one works depends entirely on whether the value we started from
-# matches a row, and we have no way of knowing that in advance.
-#
-# DVWA's blind sql injection is exactly this. The form field is empty so the
-# crawler starts from "test", no user is called test, user_id = 'test' is false
-# for every row, and every AND payload got short circuited away. The bug was
-# real, the sleep worked when asked directly, and the scanner still called it
-# clean. The OR form finds it.
+# One payload per database, in AND and OR form. {cond} is filled with an always
+# true and then an always false condition. Both forms are needed because the
+# database stops early: AND skips the sleep when the start value matches no
+# row, which is how DVWA's blind sqli hid until the OR form was added.
 TEMPLATES = [
     "' AND IF({cond},SLEEP({d}),0) -- ",                            # mysql, text
     "' OR IF({cond},SLEEP({d}),0) -- ",                             # mysql, text
@@ -93,9 +57,7 @@ FALSE_COND = "1=2"
 def looks_delayed(true_ms, false_ms, delay_seconds=DELAY_SECONDS):
     """Did the true payload really make the server wait? Returns (bool, stats).
 
-    Plain arithmetic, no requests. Keeping it separate means the rules can be
-    tried against made up samples, so the awkward cases can be built exactly
-    instead of waiting for one to turn up during a scan.
+    No requests, so the rules can be tested on made up samples.
     """
     if not true_ms or not false_ms:
         return False, {}

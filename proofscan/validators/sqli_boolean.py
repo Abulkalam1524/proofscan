@@ -1,28 +1,9 @@
-"""Stage 2. The true/false test.
+"""Stage 2 true/false test for SQL injection.
 
-Send two payloads that are identical except for one condition, which is always
-true in the first and always false in the second. Nothing else about the two
-requests differs. So if the two responses come back different, the only thing
-that could have caused it is the database evaluating that condition. That is
-the proof.
-
-The catch is pages that echo your input. Then the responses differ simply
-because the payloads differ, and every reflected parameter looks injectable.
-strip_payload takes the payload back out before comparing, which is what stops
-/search and /plain being confirmed.
-
-The other catch is that "different" needs a number, and a fixed one does not
-work. Pages are not static. A csrf token, a timestamp or a view counter changes
-between two identical requests, so a real page never quite matches itself. Guess
-the number too tight and ordinary page noise reads as a bug. Guess it too loose,
-as 0.98 turned out to be, and a real difference buried in a large template gets
-thrown away: DVWA's brute force login came back at 0.9948 between logged in and
-rejected, which is a genuine difference and was being rejected as noise.
-
-So the number is measured instead of guessed. Ask the page the same question a
-few times first and see how much it disagrees with itself. That is the floor,
-and a true/false pair has to beat it. Noisy pages set a low bar for themselves
-and quiet ones set a high one, which is the right way round.
+Send an always true and an always false condition that differ in nothing
+else. If the two pages differ by more than the page differs from itself,
+the database evaluated the input. The payload is stripped out first, so a
+page that only echoes input is not confirmed.
 """
 from ..findings import Finding, Verdict
 from ..probe import send, similarity, strip_payload
@@ -34,12 +15,8 @@ PAYLOAD_PAIRS = [
     ("' AND '1'='1", "' AND '1'='2"),               # text field
     ("' OR '1'='1' -- ", "' OR '1'='2' -- "),       # text field, rest commented out
     (" OR 1=1", " OR 1=2"),                         # number field, same idea
-    # Some checks want exactly one row and read "all of them" as failure, the
-    # same as "none of them". A login is the usual one. Against those, OR '1'='1'
-    # returns every user and looks like a rejected password, so the pair above
-    # sees no difference at all. LIMIT 1 gives the true side one row and the
-    # false side none, which those checks can tell apart. This is what DVWA's
-    # brute force page needed.
+    # For checks that want exactly one row, like a login. OR '1'='1' returns every
+    # user and looks like a failure; LIMIT 1 does not. DVWA's brute force needed it.
     ("' OR '1'='1' LIMIT 1 -- ", "' OR '1'='2' LIMIT 1 -- "),
     (" OR 1=1 LIMIT 1", " OR 1=2 LIMIT 1"),
 ]
@@ -54,11 +31,7 @@ MARGIN = 0.002
 
 
 def _noise_floor(client, point, base):
-    """How much does this page differ from itself? Send the same thing and see.
-
-    Takes the worst disagreement seen, not the average, because the bar has to
-    clear the noisiest the page has been observed to be, not its typical day.
-    """
+    """How different is the page from itself? Ask the same thing a few times, take the worst."""
     bodies = []
     for _ in range(CONTROL_SAMPLES):
         response = send(client, point, base)
@@ -122,11 +95,7 @@ def validate(client, point, reason):
             attempts.append(attempt)
             continue
 
-        # Looks like a hit. Ask again before believing it. A difference caused by
-        # the database evaluating the condition happens every time. A difference
-        # caused by something on the page changing on its own does not, and this
-        # is the last thing standing between a lucky fluctuation and a finding
-        # reported as proved.
+        # Looks like a hit. Ask again: a real difference repeats, a fluctuation does not.
         try:
             repeat_score, _, _ = _compare(client, point, true_payload, false_payload)
         except Exception as e:

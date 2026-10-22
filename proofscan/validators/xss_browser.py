@@ -1,30 +1,8 @@
-"""Stage 2 for cross site scripting. Load the page in a real browser.
+"""Stage 2 for XSS. Load the page in headless Chromium and check the script ran.
 
-Reflection is not execution. A page can hand your input straight back and still
-be perfectly safe, because it escaped the angle brackets, or because it set the
-content type to text/plain so the browser renders your script as words. Checking
-"did my payload come back" cannot tell those apart from a real bug, and that is
-where a lot of scanner noise comes from.
-
-So this does not read the response at all. It sends a payload that sets one
-variable to a value only this run knows, loads the page in headless chromium,
-and asks the browser what that variable holds. If the browser says the value
-back, the script ran. Nothing else sets that variable. There is no inference
-left to argue with.
-
-The token is fresh for every single attempt, so a page left over from an earlier
-check can never answer for a later one.
-
-Two things this has to be careful about:
-
-The browser does not go through HttpClient, which is where the scope check and
-the rate limit live. So the scope gets checked here, by hand, before anything is
-loaded. Otherwise the one rule the whole project is built on has a hole in it
-exactly where the tool drives a real browser.
-
-And the browser starts with no session. On any target with a login that means it
-would be sent straight back to the login page and would prove nothing, so the
-cookies from the logged in http client get handed over first.
+The payload sets a variable to a random token. Only if the browser hands
+that token back is the finding confirmed. The browser does not go through
+HttpClient, so the scope is checked here by hand.
 """
 import html
 import secrets
@@ -54,10 +32,8 @@ PAYLOADS = [
     '" onfocus=window.{var}=\'{token}\' autofocus x="',
 ]
 
-# Same five places as PAYLOADS, same order. Used once, after a proof has
-# worked, to get a picture: the script draws a red box on the page saying what
-# it is, so the screenshot shows the injected code running rather than us
-# drawing on the page. {js} comes from SHOW_STEPS below.
+# Same five places as PAYLOADS, same order. Used after a proof to get a picture
+# of the injected script itself drawing on the page. {js} comes from SHOW_STEPS.
 SHOW_PAYLOADS = [
     "<script>{js}</script>",
     '"><script>{js}</script>',
@@ -71,17 +47,10 @@ VIEWPORT = {"width": 1024, "height": 640}
 
 
 def cookies_from(client, base_url):
-    """Take the logged in session out of the http client and give it to chromium.
+    """Copy the logged in session from the http client into Chromium.
 
-    Playwright takes either a domain and path, or a url. Using the url avoids a
-    trap that cost a scan: a cookie we set ourselves, from --cookie, arrives
-    with no domain on it at all, so anything that filters or matches on domain
-    drops it without a word. DVWA's security cookie is exactly one of those, and
-    losing it meant the browser was quietly looking at the fully patched build
-    while the http client was looking at the vulnerable one.
-
-    Names are deduplicated because the jar holds the same session cookie twice,
-    once under "127.0.0.1" and once under ".127.0.0.1".
+    By url rather than domain: cookies set with --cookie have no domain and
+    would be dropped without a word (DVWA's security=low is one).
     """
     latest = {}
     for cookie in client._client.cookies.jar:
@@ -90,11 +59,8 @@ def cookies_from(client, base_url):
             for name, value in latest.items()]
 
 
-# The picture scripts have to get through a lot. No spaces, quotes, < or > (the
-# attribute cases), no backslashes (DVWA strips them from guestbook messages),
-# and short, because DVWA keeps 300 characters of a message and 100 of a name.
-# So the spaces are put back by the script itself, and there is a short version
-# that only turns the page red, for fields too small for the box.
+# No spaces, quotes, < > or backslashes (DVWA strips them), and short: DVWA keeps
+# 300 characters of a message and 100 of a name, hence the red page fallback.
 
 def box_js(token):
     return (f"{PROOF_VAR}=`{token}`;_b=document.createElement(`h2`);"
@@ -115,11 +81,7 @@ SHOW_STEPS = [
 
 
 class BrowserProver:
-    """Holds one chromium instance for the whole scan.
-
-    Starting a browser costs about a second, which is nothing once but a great
-    deal once per injection point.
-    """
+    """One Chromium for the whole scan, since starting one takes about a second."""
 
     def __init__(self, scope, cookies=None):
         self.scope = scope
@@ -154,10 +116,7 @@ class BrowserProver:
         return f"{point.url}?{urlencode(params)}"
 
     def ran(self, point, payload, token, shot=False):
-        """Load the payload and ask the browser whether the script ran.
-
-        With shot=True the page is also screenshotted, into last_shot.
-        """
+        """Load the payload and check the script ran. shot=True also screenshots into last_shot."""
         self.last_shot = None
         page = self._context.new_page()
         # a payload that opens a dialog would otherwise sit there forever
@@ -187,12 +146,9 @@ class BrowserProver:
                 pass
 
     def render(self, url, response):
-        """Show a response we already have, as a browser would, and screenshot it.
+        """Show a response we already have in the browser and screenshot it.
 
-        Used for the sql injection pictures. The browser is handed the body the
-        http client got for that url, so the picture is of the evidence and not
-        of a fresh request. Css and images still load from the target, but only
-        in scope.
+        Css and images still load from the target, in scope only.
         """
         if not self.scope.allows(url):
             raise OutOfScopeError(f"out of scope: {url}")
@@ -221,12 +177,7 @@ class BrowserProver:
                 pass
 
     def _submit_form(self, page, point, payload):
-        """POST it the way a browser would, by building a form and sending it.
-
-        Fetching a page with a post body is easy, but the response has to be
-        rendered and scripted for any of this to mean anything, and that only
-        happens if the browser navigates there itself.
-        """
+        """POST the payload by building a form and submitting it, so the response gets rendered."""
         if not self.scope.allows(point.url):
             raise OutOfScopeError(f"out of scope: {point.url}")
 
@@ -261,10 +212,9 @@ def _content_type(response):
 
 
 def picture_of_run(prover, point, index):
-    """Once a payload is proved, send the visible version and screenshot it.
+    """After a proof, send the visible version and screenshot it.
 
-    Only kept if the box's own token comes back, so a picture is never of a
-    page where nothing ran. Failing to get one never changes the verdict.
+    Kept only if its own token comes back. Never changes the verdict.
     """
     for make_js, label in SHOW_STEPS:
         token = "pf" + secrets.token_hex(8)
