@@ -81,7 +81,17 @@ CREATE TABLE IF NOT EXISTS findings (
     evidence     TEXT    NOT NULL
 );
 
+-- added after schema 1 was in use. it is a new table and nothing old changes,
+-- so files from before simply have no pictures in them
+CREATE TABLE IF NOT EXISTS screenshots (
+    id         INTEGER PRIMARY KEY,
+    finding_id INTEGER NOT NULL REFERENCES findings(id) ON DELETE CASCADE,
+    label      TEXT    NOT NULL,
+    png        BLOB    NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS findings_by_scan  ON findings(scan_id);
+CREATE INDEX IF NOT EXISTS screenshots_by_finding ON screenshots(finding_id);
 CREATE INDEX IF NOT EXISTS findings_by_class ON findings(kind, verdict);
 CREATE INDEX IF NOT EXISTS findings_by_cvss  ON findings(cvss_score);
 CREATE INDEX IF NOT EXISTS findings_by_point ON findings(url, param);
@@ -358,11 +368,21 @@ class EvidenceStore:
             })
             scan_id = cursor.lastrowid
 
-            self.conn.executemany(
-                INSERT_FINDING,
-                [_finding_row(scan_id, f) for f in report.findings])
+            for f in report.findings:
+                finding_id = self.conn.execute(
+                    INSERT_FINDING, _finding_row(scan_id, f)).lastrowid
+                self.conn.executemany(
+                    "INSERT INTO screenshots (finding_id, label, png) VALUES (?, ?, ?)",
+                    [(finding_id, shot["label"], shot["png"])
+                     for shot in getattr(f, "screenshots", None) or []])
 
         return scan_id
+
+    def screenshot(self, shot_id):
+        """One picture, as png bytes. None if there is no such picture."""
+        row = self.conn.execute(
+            "SELECT png FROM screenshots WHERE id = ?", (shot_id,)).fetchone()
+        return None if row is None else bytes(row["png"])
 
     def load(self, scan_id):
         """One stored scan, findings and all."""
@@ -371,8 +391,19 @@ class EvidenceStore:
         if row is None:
             raise KeyError(f"no scan {scan_id} in {self.path}")
 
-        findings = [_finding_from_row(r) for r in self.conn.execute(
-            "SELECT * FROM findings WHERE scan_id = ? ORDER BY id", (scan_id,))]
+        findings = []
+        shots = {}
+        for r in self.conn.execute(
+                "SELECT * FROM findings WHERE scan_id = ? ORDER BY id", (scan_id,)):
+            finding = _finding_from_row(r)
+            shots[r["id"]] = finding.screenshots
+            findings.append(finding)
+
+        for r in self.conn.execute(
+                "SELECT s.* FROM screenshots s JOIN findings f ON f.id = s.finding_id "
+                "WHERE f.scan_id = ? ORDER BY s.id", (scan_id,)):
+            shots[r["finding_id"]].append(
+                {"id": r["id"], "label": r["label"], "png": bytes(r["png"])})
 
         return _scan_from_row(row, findings)
 

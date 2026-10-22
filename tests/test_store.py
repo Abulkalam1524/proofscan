@@ -328,3 +328,24 @@ def test_findings_at_different_params_are_different_findings():
                        Verdict.CONFIRMED, "")
 
     assert finding_key(username) != finding_key(password)
+
+
+# --- screenshots --------------------------------------------------------------
+
+PNG = b"\x89PNG\r\n\x1a\nnot a real picture"
+
+
+def test_screenshots_come_back_with_their_finding(store):
+    finding = browser_confirmed()
+    finding.screenshots = [{"label": "the red box", "png": PNG}]
+    loaded = store.load(store.save(report([finding, rejected()])))
+
+    shots = loaded.confirmed[0].screenshots
+    assert [s["label"] for s in shots] == ["the red box"]
+    assert shots[0]["png"] == PNG
+    assert store.screenshot(shots[0]["id"]) == PNG
+    assert loaded.rejected[0].screenshots == []
+
+
+def test_a_missing_screenshot_is_none(store):
+    assert store.screenshot(999) is None

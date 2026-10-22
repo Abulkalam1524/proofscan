@@ -19,6 +19,9 @@ class Finding:
     # cvss and cwe, filled in only once a finding is proved. scoring something
     # the scanner could not prove would be putting a decimal point on a guess.
     score: object = None
+    # pictures of the proof, each {"label": ..., "png": bytes}. kept out of the
+    # evidence dict because that is json, and a png is not text.
+    screenshots: list = field(default_factory=list)
 
     def __str__(self):
         return f"[{self.verdict.value:11}] {self.kind:5} {self.point}  {self.reason}"
