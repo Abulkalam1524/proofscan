@@ -15,12 +15,17 @@ Every scan is stored. Reading them back:
     python main.py diff 2 3           # what moved between two scans
     python main.py report 3           # one scan, as a pdf
     python main.py web                # the web interface, http://127.0.0.1:8000
+
+Prove or reject another scanner's findings (ZAP json report):
+
+    python main.py verify reports/zap-dvwa.json --rewrite http://dvwa=http://127.0.0.1:8080
 """
 import argparse
 import os
 import sys
 from pathlib import Path
 
+from proofscan import verify
 from proofscan.auth import FormLogin
 from proofscan.config import Scope
 from proofscan.crawler import Crawler
@@ -219,6 +224,65 @@ def cmd_scan(args):
     return 0
 
 
+def parse_rewrites(pairs):
+    rewrites = []
+    for pair in pairs:
+        if "=" not in pair:
+            sys.exit(f"--rewrite wants FROM=TO, got {pair!r}")
+        old, new = pair.split("=", 1)
+        rewrites.append((old.rstrip("/"), new.rstrip("/")))
+    return rewrites
+
+
+def cmd_verify(args):
+    rewrites = parse_rewrites(args.rewrite)
+    if args.target:
+        target = args.target.rstrip("/")
+    else:
+        # no target given: take it from the first alert, after any rewrite
+        from proofscan.zap_report import in_scope, parse
+        first = next(iter(in_scope(parse(args.report))), None)
+        if first is None:
+            print(f"No SQL injection or XSS alerts in {args.report}, nothing to verify.")
+            return 0
+        target = verify.site_of(verify.rewrite_url(first.uri, rewrites))
+
+    scope = Scope.from_url(target, requests_per_second=args.rate, safe_mode=args.safe_mode)
+    auth = build_auth(args)
+    cookies = build_cookies(args)
+
+    print(f"ZAP report: {args.report}")
+    print(f"Target    : {target}")
+    for old, new in rewrites:
+        print(f"Rewrite   : {old} -> {new}")
+    if scope.safe_mode:
+        print("Safe mode: on, the timing tests are skipped")
+
+    with HttpClient(scope, auth=auth, cookies=cookies) as client:
+        if not sign_in(client, auth):
+            return 1
+        print()
+        result = verify.verify_zap(client, scope, args.report, target, rewrites)
+
+    report = result.report
+    print(f"ZAP reported {result.alerts} SQL injection and XSS alerts "
+          f"({result.other_classes} more in classes ProofScan does not check)")
+    for alert, why in result.skipped:
+        print(f"  skipped {alert.method} {alert.path} [{alert.param}]: {why}")
+    print(f"{report.candidates} distinct points to prove\n")
+
+    print_findings(report)
+    print_tally(report)
+
+    if args.no_save:
+        print("\nNot saved (--no-save)")
+    else:
+        with EvidenceStore(args.db) as store:
+            scan_id = store.save(report)
+        print(f"\nSaved as scan {scan_id} in {args.db}")
+    return 0
+
+
 def cmd_scans(args):
     with EvidenceStore(args.db) as store:
         rows = store.scans()
@@ -375,6 +439,22 @@ def main():
     add_login_args(sc)
     add_db_arg(sc)
     sc.set_defaults(func=cmd_scan)
+
+    ver = sub.add_parser("verify", help="prove or reject the findings in a ZAP json report")
+    ver.add_argument("report", help="ZAP traditional-json report")
+    ver.add_argument("--target", help="site to test, eg http://127.0.0.1:8080 "
+                                      "(default: taken from the report)")
+    ver.add_argument("--rewrite", action="append", default=[], metavar="FROM=TO",
+                     help="map the host ZAP saw to the one reachable here, eg "
+                          "http://dvwa=http://127.0.0.1:8080. repeatable")
+    ver.add_argument("--rate", type=float, default=10.0)
+    ver.add_argument("--safe-mode", action="store_true",
+                     help="skip the timing tests")
+    ver.add_argument("--no-save", action="store_true",
+                     help="do not write the result to the evidence file")
+    add_login_args(ver)
+    add_db_arg(ver)
+    ver.set_defaults(func=cmd_verify)
 
     scans = sub.add_parser("scans", help="list the scans in the evidence file")
     add_db_arg(scans)
