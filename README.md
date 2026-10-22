@@ -74,6 +74,28 @@ across four ProofScan scans and two ZAP scans, six weeks apart. ZAP also reporte
 for certainty, not a claim that ProofScan beats ZAP. Everyone missed DOM-based
 XSS.
 
+## Verify mode: checking ZAP's findings
+
+ProofScan can also take another scanner's report and prove or reject each
+finding. ZAP does the finding, including JavaScript-heavy pages and far more
+kinds of problem. ProofScan does the proving. Each ZAP alert is rebuilt into a
+full request by reading the form on that page, then sent through the same
+validators a scan uses.
+
+```
+python main.py verify reports/zap-dvwa.json --rewrite http://dvwa=http://127.0.0.1:8080     --login-url http://127.0.0.1:8080/login.php --username admin --cookie security=low
+```
+
+On DVWA, ZAP's 7 SQL injection and XSS alerts:
+
+| | Alerts | Correct | False alarms | Missed | Precision | Recall |
+|---|---|---|---|---|---|---|
+| ZAP alerts, as reported | 7 | 6 | 1 | 1 | 0.86 | 0.86 |
+| ZAP alerts, verified by ProofScan | 6 | 6 | 0 | 1 | **1.00** | 0.86 |
+
+The one removed is the CSP page above. It took 78 requests, against 368 for a
+full ProofScan scan, because ZAP had already done the searching.
+
 ## Architecture overview
 
 A scan runs top to bottom. Stage 1 is quick and flags anything suspicious.
@@ -207,6 +229,7 @@ Phase 1, in progress.
 - [x] web interface
 - [x] screenshot evidence
 - [x] repeat runs, results stable
+- [x] verify mode for ZAP findings
 
 ## Setup
 

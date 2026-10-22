@@ -26,3 +26,6 @@ labs/webgoat/*.log
 
 # built by showcase/build.py
 showcase/dist/
+
+# cloudflare's upload tool keeps a cache here
+.wrangler/
