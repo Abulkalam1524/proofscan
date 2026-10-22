@@ -40,6 +40,10 @@ EXCLUDE = [
     r".*setup\.php.*",
     r".*security\.php.*",
     r".*phpinfo.*",
+    # DVWA's two change password forms. ZAP filled one in on 8 Sep and changed
+    # the admin password mid scan. ProofScan skips both, so ZAP does too.
+    r".*vulnerabilities/csrf.*",
+    r".*vulnerabilities/captcha.*",
 ]
 
 
