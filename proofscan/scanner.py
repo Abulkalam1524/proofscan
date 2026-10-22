@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from .crawler import Crawler
 from .detectors import sqli, xss
 from .findings import Finding, FindingsView, Verdict
+from .probe import send
 from .scoring import score_finding
 from .validators import sqli_boolean, sqli_timing, xss_browser
 
@@ -119,12 +120,42 @@ def _scan_xss(client, scope, points, base_url):
         prover_cm.__exit__(None, None, None)
 
 
+def _picture_sqli(client, scope, findings, base_url):
+    """Screenshots of the true and the false page, for each true/false proof.
+
+    The two payloads are sent once more and the answers shown in a browser, side
+    by side in the report. The timing proof gets no picture, there is nothing to
+    see. Any failure here just means no picture, never a different verdict.
+    """
+    proved = [f for f in findings if f.verdict is Verdict.CONFIRMED
+              and f.evidence.get("technique") == "boolean"]
+    if not proved:
+        return
+    try:
+        with xss_browser.BrowserProver(
+                scope, xss_browser.cookies_from(client, base_url)) as camera:
+            for f in proved:
+                proof = f.evidence["proof"]
+                for side in ("true", "false"):
+                    payload = proof[f"{side}_payload"]
+                    try:
+                        png = camera.render(f.point.url, send(client, f.point, payload))
+                    except Exception:
+                        png = None
+                    if png:
+                        f.screenshots.append(
+                            {"label": f"{side.capitalize()} condition: {payload}", "png": png})
+    except Exception:
+        pass
+
+
 def scan(client, scope, start_url):
     started_at = datetime.now(timezone.utc)
 
     crawl = Crawler(client, scope).crawl(start_url)
 
     sqli_findings, sqli_candidates = _scan_sqli(client, scope, crawl.injection_points)
+    _picture_sqli(client, scope, sqli_findings, start_url)
     xss_findings, xss_candidates = _scan_xss(client, scope, crawl.injection_points,
                                              start_url)
 

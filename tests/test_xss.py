@@ -22,7 +22,7 @@ from proofscan.crawler import Crawler          # noqa: E402
 from proofscan.detectors import xss            # noqa: E402
 from proofscan.findings import Verdict         # noqa: E402
 from proofscan.http_client import HttpClient   # noqa: E402
-from proofscan.validators.xss_browser import BrowserProver, validate  # noqa: E402
+from proofscan.validators.xss_browser import BrowserProver, show_js, validate  # noqa: E402
 
 BASE = "http://127.0.0.1:5001"
 
@@ -115,3 +115,22 @@ def test_attribute_context_needs_a_breakout(results):
     assert comment, "/comment should be confirmed"
     assert comment[0].evidence["proof"]["payload"].startswith(('"', "'")), \
         "expected an attribute breakout payload to be the one that worked"
+
+
+def test_the_red_box_script_fits_an_attribute():
+    """No spaces or quotes, or the onerror and onfocus versions break."""
+    js = show_js("pf0123456789abcdef", 'q"><b>')
+    for bad in " \"'<>":
+        assert bad not in js
+
+
+def test_every_proved_xss_has_a_picture(results):
+    for f in confirmed(results):
+        assert f.screenshots, f"no screenshot for {f.point.url}"
+        assert f.screenshots[0]["png"].startswith(b"\x89PNG")
+
+
+def test_plain_is_shown_as_words(results):
+    """/plain gets a picture too, which is the one the demo uses."""
+    plain = [f for f in rejected(results) if urlparse(f.point.url).path == "/plain"]
+    assert plain and plain[0].screenshots
