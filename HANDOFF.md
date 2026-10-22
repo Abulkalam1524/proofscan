@@ -153,10 +153,16 @@ classes and a rushed one.
    Thrown out XSS: how the browser showed the first payload. True/false SQLi:
    the true page and the false page side by side. Timing gets no picture.
    Stored in a `screenshots` table in the same db, shown in the web UI and the
-   PDF. Old scans have none: **scan DVWA again** once Docker is up, so the demo
-   has the CSP and brute force pictures. Scan #6 is a lab scan with pictures.
-4. **Re-run DVWA benchmark 3×, 2 h**, with the change-password page excluded, so
-   the Results chapter can say the numbers are stable and the target never moved.
+   PDF. Scans before #6 have none. DVWA scan #10 and lab scan #11 have the
+   final pictures.
+4. **Repeat runs: done 22 Oct.** csrf and captcha pages excluded for both tools,
+   DVWA reset before each run, login checked after each. ProofScan scans 7, 8
+   and 10 all match scan 3 exactly (12 / 6 / 6). ZAP repeated once
+   (`reports/benchmark-dvwa-oct22.txt`): same 0.86 / 0.86, same CSP false
+   alarm, 89 other alerts instead of 95 (the 19 on the excluded pages are gone).
+   ZAP was not repeated three times, see the memory trap in section 7. Scan 9
+   ran while Docker was crashing, its conditions are not recorded, do not cite it.
+   Written up in section 5.9 of the Results chapter.
 
 5. **Rehearse the demo twice on a cold machine** (section 8). Find out in your
    own room that Docker takes minutes to start, not in theirs.
@@ -249,6 +255,11 @@ python -m benchmark --scan 3 --zap reports/zap-dvwa.json --key dvwa
 - **Docker Desktop does not start with Windows.** Start it by hand. If it hangs
   with the `docker-desktop` WSL distro Stopped, rename
   `%LOCALAPPDATA%\Docker\run` and restart it — stale sockets.
+- **ZAP runs Docker out of memory on this 16 GB laptop.** Its memory grows
+  through the active scan; uncapped it crashed Docker twice, capped at 2 GB it
+  stalled. Fixed with `~/.wslconfig` (memory=6GB, swap=4GB) and ZAP given 4 GB
+  of heap in a 5 GB container (`run_zap.py`). Close VMware and Notion first. If
+  Docker hangs: `docker desktop stop`, `wsl --shutdown`, `docker desktop start`.
 - **`reset_dvwa.py` before every DVWA scan.** Scanning changes DVWA's state and
   two runs that did not start from the same place are not comparable.
 - **`--cookie security=low` is mandatory on DVWA.** Without it DVWA serves the
@@ -277,10 +288,12 @@ waiting on purpose, and depends on Docker, the target and Chromium all working o
 the day. Use live scanning as a bonus if the room cooperates, never as the plan.
 
 Stored scans to demo from (in `evidence/proofscan.db`):
-- **#3 — DVWA**, logged in: 12 suspicious, 6 proved, 6 thrown out. Contains the
-  CSP finding.
-- **#4 — lab app**, scanned through the web UI on 22 Oct: 12 suspicious, 7
-  proved, 5 thrown out, 42%. Contains `/plain`.
+- **#10 — DVWA**, logged in, 22 Oct: 12 suspicious, 6 proved, 6 thrown out.
+  Contains the CSP finding, with pictures (brute force true/false pages, the
+  red box on xss_r and the guestbook, the CSP page where nothing ran).
+- **#11 — lab app**, 22 Oct: 12 suspicious, 7 proved, 5 thrown out, 42%.
+  Contains `/plain`, with the picture of the script shown as plain words.
+- #3 and #4 are the same scans from before screenshots existed.
 
 The story, which needs no security knowledge to follow:
 1. "Here is a website with a search box." Show the lab app.
