@@ -92,7 +92,7 @@ def browser_confirmed(url=f"{LAB}/search", param="q"):
             "proof": {
                 "payload": "<script>window.__proofscan_xss='t0ken'</script>",
                 "token": "t0ken",
-                "variable": "__proofscan_xss",
+                "variable": "window.__proofscan_xss",
                 "read_back": "t0ken",
             },
             "attempts": [{"payload": "<svg onload=...>", "result": "nothing ran"}],

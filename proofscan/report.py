@@ -147,10 +147,12 @@ def proof_rows(finding):
         ]
 
     if technique == "browser":
+        # the validator stores it with "window." already on the front
+        variable = proof["variable"].removeprefix("window.")
         return [
             ("Payload", proof["payload"]),
             ("What it sets",
-             f"window.{proof['variable']}, to a value generated for this one "
+             f"window.{variable}, to a value generated for this one "
              f"attempt and nothing else"),
             ("Value sent", proof["token"]),
             ("Value the browser gave back", proof["read_back"]),

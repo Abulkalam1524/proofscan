@@ -75,6 +75,7 @@ def test_a_browser_proof_prints_what_was_sent_and_what_came_back():
     assert rows["Value sent"] == "t0ken"
     assert rows["Value the browser gave back"] == "t0ken"
     assert "window.__proofscan_xss" in rows["What it sets"]
+    assert "window.window" not in rows["What it sets"]
 
 
 def test_a_finding_with_no_proof_has_no_proof_rows():
