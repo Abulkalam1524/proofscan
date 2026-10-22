@@ -1,6 +1,6 @@
 # ProofScan — handoff brief
 
-Paste this into a new chat to bring it up to speed. Written 22 Oct 2026.
+Paste this into a new chat to bring it up to speed. Written 22 Oct 2026. The written submission is called the **project report**.
 
 Deeper detail lives in `NOTES.md` (~600 lines) in the same folder: every design
 decision with its reasoning, the seven things DVWA broke, the full benchmark
@@ -156,6 +156,10 @@ classes and a rushed one.
 5. **Rehearse the demo twice on a cold machine** (section 8). Find out in your
    own room that Docker takes minutes to start, not in theirs.
 
+**Decide early:** the GitHub repo is public and `NOTES.md` reads close to report
+prose, so a plagiarism checker could match the project report against it. Make
+the repo private until evaluation, or tell the supervisor it is yours.
+
 **Cut, and say so in writing as future work:**
 - Broken access control (10–12 h). **Write the scope reduction deliberately** —
   slide 5 promises three techniques and the demo shows two. Do not leave that
@@ -286,6 +290,9 @@ The story, which needs no security knowledge to follow:
 7. Close on DVWA scan #3, the CSP card: **ZAP, the standard professional tool,
    reports this as a High risk vulnerability. It is not one. ProofScan proves
    it.**
+
+**Copy `evidence/proofscan.db` with the code.** Replay reads that file and git
+ignores it, so a fresh clone on a college machine has nothing to replay.
 
 Use the XSS examples, not SQL injection. "The browser refused to run it" is
 intuitive. "The database evaluated the injected condition" is not.
