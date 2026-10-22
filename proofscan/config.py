@@ -14,14 +14,8 @@ class Scope:
     # skips the timing tests, the only ones that make the server wait
     safe_mode: bool = False
 
-    # Places we are allowed to touch but must not. Not about permission, about
-    # not wrecking our own results. A scanner that submits every form it finds
-    # will eventually submit one that changes the thing it is measuring, and
-    # then every finding after that is meaningless.
-    #
-    # This is not paranoia. On the first real scan of DVWA the scanner posted to
-    # security.php, set the security level to "impossible", carried on scanning
-    # the now fully patched app, found nothing, and reported a clean site.
+    # In scope, but submitting to these changes the target and spoils the scan.
+    # DVWA's security.php did exactly that on the first real scan.
     avoid: tuple = (
         # ends our own session
         "logout", "log-out", "logoff", "signout", "sign-out",

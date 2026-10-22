@@ -1,18 +1,6 @@
-"""CVSS v3.1 base scores, CWE numbers and OWASP Top 10 categories.
+"""CVSS v3.1 base scores, CWE and OWASP Top 10, for proved findings only.
 
-A finding that says "sql injection on /product" is not a report. Somebody has to
-decide what to fix first, and that means a number they recognise and a category
-they can look up. This turns a proved finding into both.
-
-Only proved findings get scored. Putting a decimal point on something the
-scanner could not prove is exactly the habit this project exists to argue
-against.
-
-The arithmetic is the published CVSS v3.1 formula, including its own peculiar
-rounding rule, which is why roundup looks the way it does instead of calling
-Python's round(). The specification is deliberate about that: ordinary rounding
-gives the wrong answer at the boundaries because of binary floating point, so
-the spec does the rounding in integers.
+The arithmetic follows the published spec, including its integer rounding.
 """
 import math
 from dataclasses import dataclass, field
@@ -40,12 +28,7 @@ SEVERITY_BANDS = [
 
 
 def roundup(value):
-    """The rounding rule from the CVSS v3.1 spec, done in integers.
-
-    Rounding a float gets the boundary cases wrong, because a number like 4.02
-    is not exactly 4.02 once it is binary. The spec works in hundred thousandths
-    to sidestep that.
-    """
+    """Round up to one decimal the way the CVSS v3.1 spec does, in integers."""
     scaled = int(round(value * 100000))
     if scaled % 10000 == 0:
         return scaled / 100000.0
@@ -99,10 +82,8 @@ class Score:
         return f"{self.cvss_score} {self.severity} ({self.cwe}) {self.cvss_vector}"
 
 
-# What each class of finding is, and the impact metrics normally accepted for
-# it. Everything here except privileges required is a property of the class
-# rather than of this particular target, and the report says so, because a
-# number that looks measured but is not is worse than no number.
+# Each class and its usual impact metrics. Everything except privileges
+# required comes from the class, not this target, and the report says so.
 CLASSES = {
     "sqli": {
         "cwe": "CWE-89",
@@ -145,13 +126,8 @@ CLASSES = {
 def score_finding(kind, needed_login):
     """Score one proved finding.
 
-    needed_login is the single metric taken from the scan rather than from the
-    class. If the scanner had to log in to reach the injection point then so
-    does an attacker, so privileges required is Low rather than None.
-
-    It is a simplification and the report says so. A reflected cross-site
-    scripting bug behind a login can still be reached by somebody with no
-    account at all, by sending the link to a person who has one.
+    Privileges required is Low if the scan had to log in to reach the
+    point, else None. A simplification, and the report says so.
     """
     spec = CLASSES.get(kind)
     if spec is None:

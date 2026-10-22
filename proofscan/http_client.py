@@ -37,18 +37,11 @@ class HttpClient:
         self._last_request_at = 0.0
         self._client = httpx.Client(
             timeout=scope.timeout_seconds,
-            # redirects are followed here, by hand, one hop at a time. httpx
-            # would follow them internally and the scope check would only ever
-            # see the first url, so a redirect could walk us onto a host we were
-            # never allowed to touch.
+            # redirects followed by hand, one hop at a time, so every hop gets the scope check
             follow_redirects=False,
             headers={"User-Agent": USER_AGENT},
-            # Some apps keep part of their state in a cookie rather than in the
-            # session, and start in whatever mode the cookie is missing. DVWA is
-            # the example that cost an afternoon: it hands out
-            # security=impossible at login, which is the fully patched build, so
-            # a scanner that never sets the cookie is scanning an app with
-            # nothing wrong with it and cannot tell.
+            # Some apps keep state in a cookie. DVWA hands out security=impossible unless
+            # told otherwise, hence --cookie.
             cookies=cookies or {},
         )
         self.request_count = 0
@@ -82,12 +75,9 @@ class HttpClient:
         )
 
     def request(self, method, url, follow_redirects=False, **kwargs):
-        """Send a request, optionally following redirects.
+        """Send a request. Redirects are off unless asked for.
 
-        Redirects stay off by default. The detectors and validators compare one
-        response against another, and a redirect that gets followed hides the
-        thing they are looking at. Logging in is the opposite case: those flows
-        are all redirects, so the login code turns this on for itself.
+        Following a redirect hides the response being compared. Login turns them on.
         """
         response = self._send(method, url, **kwargs)
 
@@ -123,13 +113,7 @@ class HttpClient:
         return response
 
     def _recover_session(self, response, method, url, follow_redirects, kwargs):
-        """If we have been logged out, log back in and ask again, once.
-
-        Sessions expire part way through a scan. Without this the scanner
-        carries on happily requesting the login page for every remaining point
-        and reports that it found nothing wrong, which is the worst possible
-        way to fail.
-        """
+        """If we were logged out, log in again and retry once."""
         if self.auth is None or self._relogging:
             return response
         if not self.auth.looks_logged_out(response):

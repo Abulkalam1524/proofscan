@@ -1,9 +1,4 @@
-"""Stage 1. Looks for anything that might be sql injection.
-
-This is meant to be noisy. Missing a real bug here is much worse than flagging
-something extra, because whatever it flags still has to get past the validator
-before it reaches the report.
-"""
+"""Stage 1 for SQL injection. Noisy on purpose, the validators filter it."""
 from ..probe import send, similarity, strip_payload
 
 ERROR_SIGNS = [

@@ -4,11 +4,7 @@ import html
 
 
 def send(client, point, value, **kwargs):
-    """Send a request with `value` in the point's parameter, others unchanged.
-
-    Anything extra goes on to the client, which is how the timing test asks for
-    a longer timeout than everything else gets.
-    """
+    """Send value in the point's parameter, others unchanged. Extra kwargs go to the client."""
     params = point.base_params()
     params[point.param] = value
     if point.method == "POST":
@@ -17,12 +13,7 @@ def send(client, point, value, **kwargs):
 
 
 def strip_payload(body, payload):
-    """Take the payload back out of a response.
-
-    Pages often echo what you sent. If we compare two responses without doing
-    this, they differ just because the payloads differ, and every reflected
-    parameter looks injectable. Escaped copies get removed too.
-    """
+    """Take the payload, and its escaped forms, back out of a response before comparing."""
     for form in (payload, html.escape(payload), html.escape(payload, quote=False)):
         body = body.replace(form, "@@")
     return body

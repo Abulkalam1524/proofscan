@@ -12,14 +12,7 @@ from .validators import sqli_boolean, sqli_timing, xss_browser
 
 @dataclass
 class ScanReport(FindingsView):
-    """Everything one scan produced.
-
-    It carries the counters off the client and the settings off the scope as
-    well as the findings, rather than pointing at either. A report that has to
-    ask the client how many requests it sent cannot be written once the client
-    is closed, and the whole point of storing a scan is that it outlives the
-    process that ran it.
-    """
+    """Everything one scan produced, copied off the client so it can be saved after it closes."""
     target: str
     crawl: object
     findings: list = field(default_factory=list)
@@ -73,10 +66,8 @@ def _scan_sqli(client, scope, points):
                 findings.append(boolean)
                 continue                  # proved already, no need to make it wait
 
-        # the timing test does not wait to be invited by the detector. blind
-        # sqli is the case where the page never changes, so there is nothing for
-        # stage 1 to notice and nothing for the true/false test to compare. if
-        # we only ran this on points the detector flagged we would never see it.
+        # the timing test runs on every point, not only flagged ones. blind sqli is
+        # invisible to stage 1 by definition
         if scope.safe_mode:
             if boolean is not None:
                 findings.append(boolean)
@@ -121,11 +112,9 @@ def _scan_xss(client, scope, points, base_url):
 
 
 def _picture_sqli(client, scope, findings, base_url):
-    """Screenshots of the true and the false page, for each true/false proof.
+    """Screenshot the true and false pages for each true/false proof.
 
-    The two payloads are sent once more and the answers shown in a browser, side
-    by side in the report. The timing proof gets no picture, there is nothing to
-    see. Any failure here just means no picture, never a different verdict.
+    A failure here means no picture, never a different verdict.
     """
     proved = [f for f in findings if f.verdict is Verdict.CONFIRMED
               and f.evidence.get("technique") == "boolean"]

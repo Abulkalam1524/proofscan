@@ -1,14 +1,7 @@
-"""Stage 1 for cross site scripting. Does our input come back out?
+"""Stage 1 for XSS: does our input come back in the page? Noisy on purpose.
 
-Noisy on purpose, like the sqli detector. Reflection is not a vulnerability. A
-page that escapes the input properly still reflects it, and so does a page that
-returns it as plain text where nothing can run. Both get flagged here, and both
-get thrown out by the browser in stage 2. That split is the whole point: this
-stage is cheap and generous, the next one is expensive and strict.
-
-It also reports which characters survived the round trip. That does not decide
-anything, it just goes in the evidence, because "the angle brackets came back
-untouched" is the sentence that makes a report readable.
+Reflection is not execution, the browser decides that in stage 2. Which
+characters came back unescaped goes in the evidence.
 """
 import random
 import string
@@ -46,11 +39,7 @@ def detect(client, point):
 
 
 def _tail(body, marker, span=16):
-    """The few characters sitting right after the marker in the response.
-
-    Looking at the whole page would find angle brackets everywhere, since the
-    page is made of them. Only what came back attached to our own marker counts.
-    """
+    """The characters right after our marker, so only our own reflection counts."""
     at = body.find(marker)
     if at == -1:
         return ""

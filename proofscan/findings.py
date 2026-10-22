@@ -28,12 +28,7 @@ class Finding:
 
 
 class FindingsView:
-    """The three verdict buckets over a list of findings.
-
-    Shared by the live scan report and by a scan loaded back out of the evidence
-    store, so both sort and print identically. If the stored copy cannot produce
-    the same output as the live one, the store lost something.
-    """
+    """The three verdict lists, shared by live and stored scans so both print the same."""
     findings = ()
     candidates = 0
 
@@ -57,16 +52,9 @@ class FindingsView:
 
     @property
     def tally(self):
-        """The candidate funnel: how many were suspected, and how many survived.
+        """The funnel: suspected, proved, thrown out.
 
-        This is the number the project is judged on, so the terminal and the pdf
-        both read it from here rather than each working it out. Two places
-        counting the same thing is two places to disagree, and the report would
-        be the one that got printed.
-
-        Findings the detector never flagged are the blind ones, caught by the
-        clock alone. They are counted apart from the rest, because folding them
-        into the candidates would flatter the percentage.
+        Blind finds (timing test only) are counted apart so they do not inflate the percentage.
         """
         from_detector = [f for f in self.confirmed
                          if f.evidence.get("detector_reason")]

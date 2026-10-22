@@ -1,21 +1,6 @@
-"""The evidence store. One sqlite file holding scans and what they proved.
+"""The evidence store. One SQLite file with scans, findings, proofs and screenshots.
 
-Three reasons it exists, in order of how much they matter:
-
-1. The report reads from here. Findings have to survive the process that made
-   them, or printing a report means running the whole scan again.
-2. Comparing one scan against the next. Did the fix work, did something come
-   back, did the benchmark shift. That comparison is a result in its own right
-   and it is impossible without stored scans.
-3. It is the evidence half of the claim. A proved finding whose proof was
-   printed to a terminal and then lost is not much better than a guess.
-
-One findings table with the common columns, and the evidence dict as a json
-column. The three proof shapes are a true/false comparison, a set of response
-times, and a variable read back out of a browser, and they have almost nothing
-in common with each other, so modelling all three in sql would mean three tables
-of mostly empty columns for the sake of data nothing queries on. What does get
-queried is kind, verdict, cvss and url, and those are real columns with indexes.
+The report, the web UI, diff and the benchmark all read from here.
 """
 import json
 import sqlite3
@@ -133,11 +118,7 @@ ORDER BY s.id
 
 @dataclass
 class StoredScan(FindingsView):
-    """A scan read back out of the file.
-
-    Same attribute names as ScanReport, on purpose. Anything that prints a scan
-    should not have to care which of the two it was handed.
-    """
+    """A scan read back from the file. Same attribute names as ScanReport."""
     id: int
     target: str
     started_at: str
@@ -187,12 +168,7 @@ class Comparison:
 
 
 def finding_key(finding):
-    """What makes a finding in one scan the same finding as one in another.
-
-    The place, not the proof. A fix that changes an error message must not read
-    as a different bug, and a payload that worked last week and works again this
-    week is the same finding rather than a new one.
-    """
+    """What makes two findings the same across scans: the place, not the proof."""
     point = finding.point
     return (finding.kind, point.method, point.url, point.param, point.source)
 
@@ -221,12 +197,7 @@ def _as_text(moment):
 
 
 def _as_json(value):
-    """Evidence dicts hold numbers, strings and lists, and json takes all three.
-
-    default=str is a safety net rather than a plan. If a validator ever puts
-    something exotic into an evidence dict, the scan should end with a slightly
-    ugly string in the file rather than with a crash after all the work is done.
-    """
+    """Evidence as json. default=str so an odd value never crashes a finished scan."""
     return json.dumps(value, default=str)
 
 
@@ -344,12 +315,7 @@ class EvidenceStore:
                 f"rather than mixing the two.")
 
     def save(self, report):
-        """Store one scan and its findings, and return the new scan id.
-
-        Both inserts run inside one transaction. Half a scan in the file is
-        worse than no scan at all, because then the summary at the top quotes
-        numbers that the findings underneath it do not add up to.
-        """
+        """Store one scan and its findings in one transaction. Returns the scan id."""
         with self.conn:
             cursor = self.conn.execute(INSERT_SCAN, {
                 "target": report.target,
@@ -439,12 +405,7 @@ class EvidenceStore:
 
     def query(self, kind=None, verdict=None, min_cvss=None, url_like=None,
               scan_id=None):
-        """Findings across every stored scan, filtered. Returns (scan_id, finding).
-
-        This is what the plain columns beside the json blob are for. "Has this
-        parameter ever come back confirmed, and in which scan" is a question
-        about four columns, and it is one the report asks.
-        """
+        """Findings across all stored scans, filtered. Returns (scan_id, finding)."""
         clauses = []
         params = {}
 

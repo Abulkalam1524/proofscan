@@ -1,24 +1,8 @@
-"""The report. One stored scan, rendered to html and printed to pdf.
+"""The pdf report, made from a stored scan, never a live one.
 
-It reads a scan out of the evidence store and never runs one itself. That is
-deliberate rather than convenient: a report is a claim about what was proved,
-and if it could go and re-test the target while printing, the document and the
-evidence behind it would be two different things. Everything in here comes from
-a row in the file.
-
-**Autoescaping is not optional.** This document prints attacker-controlled
-strings by design. Every confirmed cross site scripting finding contains a
-payload written to run in a browser, and the report gets opened in a browser to
-turn it into a pdf. Building the html by hand and forgetting one escape would
-mean a security report that runs the exploit it is reporting, on whoever opens
-it. Jinja2 with autoescape on makes that the default instead of something to
-remember, which is the only reason a template engine is worth the dependency for
-one document.
-
-WeasyPrint would have been the obvious way to make the pdf and is ruled out: it
-needs GTK on windows and does not install. Chromium is already here for the xss
-validator, and `page.pdf()` is the same renderer that draws the html, so what
-prints is what the browser showed.
+Autoescaping has to stay on: the report prints working XSS payloads and is
+opened in a browser to make the pdf. Chromium's page.pdf() is used because
+WeasyPrint needs GTK and will not install on Windows.
 """
 import base64
 from datetime import datetime, timedelta
@@ -115,12 +99,7 @@ def _duration(seconds):
 
 
 def proof_rows(finding):
-    """The proof behind one confirmed finding, flattened for printing.
-
-    The three techniques prove different things with different numbers, so the
-    branching happens here. A template full of "if the technique is timing" is a
-    template nobody can check, and this part is the one worth checking.
-    """
+    """The proof behind one confirmed finding, as (label, value) rows."""
     proof = finding.evidence.get("proof")
     if not proof:
         return []
@@ -175,12 +154,7 @@ def proof_rows(finding):
 
 
 def attempt_rows(finding):
-    """What was tried before a candidate was thrown out.
-
-    The false alarm count is the number this project is judged on, and a number
-    like that is worth nothing without the work behind it shown. This is the
-    half a scanner normally discards.
-    """
+    """What was tried before a candidate was thrown out, as rows."""
     rows = []
 
     for attempt in finding.evidence.get("attempts", []):
@@ -209,22 +183,13 @@ def severity_counts(findings):
 
 
 def techniques_used(findings):
-    """The techniques this scan actually leaned on, in a fixed order.
-
-    Only what was used. Explaining a test that never ran pads the methodology
-    section and invites a reader to assume it was applied.
-    """
+    """The proof techniques this scan actually used, in a fixed order."""
     used = {f.evidence.get("technique") for f in findings}
     return [(name, text) for name, text in TECHNIQUES.items() if name in used]
 
 
 def limitations(scan):
-    """Everything this report is not claiming, said in the report itself.
-
-    A reader who has to work out the gaps for themselves will assume there are
-    none. Every one of these is a known edge of the tool rather than a caveat
-    added for safety.
-    """
+    """What this report does not claim, said in the report itself."""
     notes = [
         "Only SQL injection and cross site scripting were looked for. Command "
         "injection, file inclusion, insecure direct object references, cross "

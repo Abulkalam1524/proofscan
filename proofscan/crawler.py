@@ -51,10 +51,8 @@ class Crawler:
             seen.add(url)
 
             try:
-                # redirects get followed while crawling, because this is about
-                # finding pages and plenty of sites answer / with a redirect to
-                # the real front page. the detectors keep them switched off,
-                # since a followed redirect hides the response they compare.
+                # redirects are followed while crawling, plenty of sites redirect / somewhere.
+                # the detectors keep them off
                 response = self.client.get(url, follow_redirects=True)
             except Exception as e:
                 print(f"  [!] {url}: {e}")
@@ -93,12 +91,7 @@ class Crawler:
         return CrawlResult(pages, list(points.values()), self.avoided)
 
     def _keep(self, points, point):
-        """Collect an injection point, unless submitting to it would spoil the scan.
-
-        Reading one of these pages is harmless. Posting a payload into it is not,
-        and the crawler is where the decision belongs, because a point that never
-        gets collected can never be sent anything by anyone downstream.
-        """
+        """Collect an injection point, unless submitting to it would change the target."""
         if self.scope.should_avoid(point.url):
             if point.url not in self.avoided:
                 self.avoided.append(point.url)
@@ -126,25 +119,15 @@ class Crawler:
             action = urljoin(page_url, form.get("action") or page_url)
             method = (form.get("method") or "GET").upper()
 
-            # Two password boxes means change your password, or register, or
-            # reset. One box is a login, which is a fair target. Two is a form
-            # whose whole purpose is to change the credentials we are using.
-            #
-            # This is not hypothetical. Once submit buttons started being sent,
-            # DVWA's change password form began to fire, the validator's own
-            # baseline value went into both boxes at once, they matched, and the
-            # scanner changed the admin password to "test" and locked itself
-            # out of the target half way through the scan.
+            # Two password boxes is change password, register or reset. Never submit it:
+            # on DVWA this changed the admin password mid scan.
             if len(form.find_all("input", attrs={"type": "password"})) >= 2:
                 if action not in self.avoided:
                     self.avoided.append(action)
                 continue
 
-            # Everything named goes in the payload, submit buttons included.
-            # Plenty of apps check for the button rather than the field and do
-            # nothing at all without it. DVWA's sql injection page is one: drop
-            # Submit and it renders the form and never runs the query, so the
-            # response never changes and the page looks safe.
+            # Every named field goes in, submit buttons too. DVWA's sqli page never runs
+            # the query without Submit=Submit.
             fields = []
             for tag in form.find_all(["input", "textarea", "select"]):
                 name = tag.get("name")
