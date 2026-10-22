@@ -254,7 +254,8 @@ async function loadSaved(selectId) {
   $("load").disabled = false;
   for (const s of scans) {
     const when = s.started_at.slice(0, 16).replace("T", " ");
-    const notes = [s.authenticated ? "logged in" : "", s.safe_mode ? "safe mode" : ""]
+    const notes = [s.note || "", s.authenticated ? "logged in" : "",
+                   s.safe_mode ? "safe mode" : ""]
       .filter(Boolean).join(", ");
     const label = `#${s.id}  ${s.target}  -  ${s.confirmed} proved, ` +
                   `${s.rejected} thrown out  -  ${when}${notes ? "  (" + notes + ")" : ""}`;
@@ -445,9 +446,13 @@ $("scan").addEventListener("click", async () => {
 {% endif %}
 
 {% if showcase %}
-// open the first saved scan straight away, without jumping down the page
-loadSaved().then(() => showScan($("saved").value)).then(() => scrollTo(0, 0))
-  .catch(e => notice(e.message));
+// open a scan straight away, without jumping down the page. replay.html?scan=12
+// picks one, otherwise the first in the list
+loadSaved().then(() => {
+  const wanted = new URLSearchParams(location.search).get("scan");
+  if (wanted && [...$("saved").options].some(o => o.value === wanted)) $("saved").value = wanted;
+  return showScan($("saved").value);
+}).then(() => scrollTo(0, 0)).catch(e => notice(e.message));
 {% else %}
 loadSaved().catch(e => notice(e.message));
 {% endif %}

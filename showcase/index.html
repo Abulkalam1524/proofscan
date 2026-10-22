@@ -39,6 +39,8 @@
   td.num, th.num { text-align: right; }
   tr.ours td { font-weight: 700; color: var(--proved); }
   .note { color: var(--muted); font-size: 15px; margin-top: 10px; }
+  .inline-btn { display: inline-block; padding: 9px 16px; border-radius: 8px; background: var(--accent);
+                color: #fff; text-decoration: none; font-weight: 600; font-size: 16px; }
   figure { margin: 14px 0 0; }
   figcaption { color: var(--muted); font-size: 14px; margin-top: 6px; }
   ul { padding-left: 22px; }
@@ -119,10 +121,26 @@
       scans, six weeks apart. ZAP also checks around a hundred kinds of problem that
       ProofScan does not, so this is a trade of coverage for certainty, not a claim
       that ProofScan beats ZAP. Everyone missed DOM-based XSS.</p>
-    <p class="note"><strong>Verify mode</strong> goes one step further: ProofScan
-      takes ZAP's own findings and proves or rejects each one. On DVWA it kept all
-      6 of ZAP's real findings and removed its one false alarm, taking ZAP's
-      precision from 0.86 to 1.00 in 78 requests.</p>
+
+  </section>
+
+  <section>
+    <h2>Verify mode: checking ZAP's own findings</h2>
+    <p>ProofScan can also take ZAP's report and prove or reject each finding in it.
+      ZAP keeps its wide coverage, and ProofScan adds certainty to the part it can
+      test. ZAP's report only names the page and the input, so ProofScan rebuilds
+      each request by reading the form on that page, then runs the same tests.</p>
+    <div class="table-wrap">
+      <table>
+        <tr><th></th><th class="num">Alerts</th><th class="num">Correct</th><th class="num">False alarms</th><th class="num">Precision</th><th class="num">Recall</th></tr>
+        <tr><td>ZAP alerts, as reported</td><td class="num">7</td><td class="num">6</td><td class="num">1</td><td class="num">0.86</td><td class="num">0.86</td></tr>
+        <tr class="ours"><td>ZAP alerts, verified by ProofScan</td><td class="num">6</td><td class="num">6</td><td class="num">0</td><td class="num">1.00</td><td class="num">0.86</td></tr>
+      </table>
+    </div>
+    <p class="note">All 6 real findings were proved, and the one removed is the CSP
+      page below. It took 78 requests, against 368 for a full ProofScan scan,
+      because ZAP had already done the searching.</p>
+    <p><a class="inline-btn" href="replay.html?scan=12">Replay the verified ZAP scan</a></p>
   </section>
 
   <section>

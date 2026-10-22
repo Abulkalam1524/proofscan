@@ -18,7 +18,8 @@ from proofscan.store import DEFAULT_PATH, EvidenceStore  # noqa: E402
 from web.app import create_app, scan_json  # noqa: E402
 
 DIST = HERE / "dist"
-SCANS = [10, 11]      # DVWA and the lab app, both with screenshots. first one opens by default
+SCANS = [10, 12, 11]  # DVWA, ZAP's DVWA findings verified, the lab app. first one opens by default
+NOTES = {12: "ZAP's findings, verified by ProofScan"}
 
 
 def main():
@@ -35,7 +36,8 @@ def main():
             rows.append({"id": s.id, "target": s.target, "started_at": s.started_at,
                          "duration": round(s.duration_seconds),
                          "confirmed": s.confirmed_count, "rejected": s.rejected_count,
-                         "safe_mode": s.safe_mode, "authenticated": s.authenticated})
+                         "safe_mode": s.safe_mode, "authenticated": s.authenticated,
+                         "note": NOTES.get(scan_id, "")})
 
             stored = store.load(scan_id)
             data = scan_json(stored)
