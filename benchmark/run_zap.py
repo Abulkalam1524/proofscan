@@ -184,13 +184,14 @@ def main():
 
     # Without limits ZAP's java grows through the active scan until Windows runs
     # out of memory and Docker's VM dies with it, which happened twice on a
-    # 16 GB laptop. 2 GB of heap is plenty for DVWA, and the container cap means
-    # that if it ever is not, ZAP is stopped rather than all of Docker.
-    command = ["docker", "run", "--rm", "--memory", "3g",
+    # 16 GB laptop. 2 GB of heap was not enough: ZAP sat at the cap and stalled
+    # past its own time limit. 4 GB, inside a 5 GB container, inside the 6 GB
+    # .wslconfig gives Docker. If it still runs out, ZAP stops, not Docker.
+    command = ["docker", "run", "--rm", "--memory", "5g",
                "-v", f"{out.parent.as_posix()}:/zap/wrk:rw"]
     if args.network:
         command += ["--network", args.network]
-    command += [ZAP_IMAGE, "zap.sh", "-Xmx2g", "-cmd",
+    command += [ZAP_IMAGE, "zap.sh", "-Xmx4g", "-cmd",
                 "-autorun", f"/zap/wrk/{plan_path.name}"]
 
     print(" ".join(command), flush=True)
