@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ProofScan</title>
+<meta name="description" content="A web vulnerability scanner that proves each finding before it reports it. SQL injection and XSS, benchmarked against OWASP ZAP.">
+<style>
+  :root {
+    color-scheme: light;
+    --ink: #14181f; --muted: #5b6472; --line: #dfe3ea; --ground: #f4f6f9;
+    --card: #ffffff; --accent: #2348a8; --proved: #17804f; --out: #6b7280;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--ground); color: var(--ink);
+         font: 17px/1.6 "Segoe UI", system-ui, -apple-system, Arial, sans-serif; }
+  header { background: #14213d; color: #fff; padding: 56px 16px 48px; text-align: center; }
+  header h1 { margin: 0; font-size: 44px; letter-spacing: .5px; }
+  header .tag { margin: 6px 0 0; font-size: 22px; opacity: .95; }
+  header .sub { margin: 10px auto 0; max-width: 640px; opacity: .8; }
+  .buttons { margin-top: 26px; display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .btn { display: inline-block; padding: 11px 20px; border-radius: 8px; text-decoration: none;
+         font-weight: 600; border: 2px solid #fff; color: #fff; }
+  .btn.main { background: #fff; color: #14213d; }
+  main { max-width: 900px; margin: 0 auto; padding: 0 16px 40px; }
+  section { margin-top: 44px; }
+  h2 { font-size: 26px; margin: 0 0 10px; }
+  .demo { margin-top: -24px; background: var(--card); border: 1px solid var(--line);
+          border-radius: 12px; padding: 10px; box-shadow: 0 8px 24px rgba(20, 24, 31, .08); }
+  img { max-width: 100%; height: auto; display: block; border-radius: 6px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; }
+  .card h3 { margin: 0 0 6px; font-size: 18px; }
+  .card p { margin: 0; color: #2f3846; font-size: 16px; }
+  .table-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; background: var(--card); font-size: 16px; }
+  th, td { padding: 9px 12px; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; }
+  th { background: #eef1f6; font-size: 15px; }
+  td.num, th.num { text-align: right; }
+  tr.ours td { font-weight: 700; color: var(--proved); }
+  .note { color: var(--muted); font-size: 15px; margin-top: 10px; }
+  figure { margin: 14px 0 0; }
+  figcaption { color: var(--muted); font-size: 14px; margin-top: 6px; }
+  ul { padding-left: 22px; }
+  li { margin-bottom: 6px; }
+  footer { border-top: 1px solid var(--line); margin-top: 56px; padding: 22px 16px 40px;
+           text-align: center; color: var(--muted); font-size: 15px; }
+  footer a { color: var(--accent); }
+  @media (max-width: 600px) {
+    header { padding: 40px 16px 40px; }
+    header h1 { font-size: 34px; }
+    header .tag { font-size: 19px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>ProofScan</h1>
+  <p class="tag">Scanners guess. ProofScan proves.</p>
+  <p class="sub">A web vulnerability scanner that tests every suspicious finding
+    before it reports it, and keeps the evidence.</p>
+  <div class="buttons">
+    <a class="btn main" href="replay.html">Replay a real scan</a>
+    <a class="btn" href="reports/scan-10.pdf">Sample PDF report</a>
+    <a class="btn" href="https://github.com/Abulkalam1524/proofscan">Source on GitHub</a>
+  </div>
+</header>
+
+<main>
+  <div class="demo">
+    <img src="demo.gif" alt="ProofScan replaying a scan of DVWA: 12 suspicious, 6 proved real, 6 proved false and thrown out" width="960" height="600">
+  </div>
+
+  <section>
+    <h2>The problem</h2>
+    <p>Security scanners report a lot of things that are not real. Someone then has
+      to check every alert by hand, which is the slow part of a security test.
+      ProofScan does that checking itself. It looks for SQL injection and
+      cross-site scripting (XSS), and every candidate gets a second, active test
+      that tries to prove it. Only what it can prove goes in the report.</p>
+  </section>
+
+  <section>
+    <h2>How it proves things</h2>
+    <div class="cards">
+      <div class="card">
+        <h3>True/false test</h3>
+        <p>Send an always-true and an always-false condition that differ in nothing
+          else. If the pages differ by more than the page differs from itself, the
+          database ran our input.</p>
+      </div>
+      <div class="card">
+        <h3>Timing test</h3>
+        <p>For pages that never change. Two inputs, a sleep behind a true or a false
+          condition. Confirmed only if the true side is slower every single time.</p>
+      </div>
+      <div class="card">
+        <h3>Real browser</h3>
+        <p>Load the page in headless Chromium. The script has to hand back a random
+          token only it knows. Coming back in the page is not enough, it has to run.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Results against OWASP ZAP</h2>
+    <p>On DVWA, a deliberately vulnerable app I did not write, scored on SQL
+      injection and XSS against a hand-written answer key:</p>
+    <div class="table-wrap">
+      <table>
+        <tr><th></th><th class="num">Alerts</th><th class="num">Correct</th><th class="num">False alarms</th><th class="num">Precision</th><th class="num">Recall</th></tr>
+        <tr><td>ProofScan, verification off</td><td class="num">12</td><td class="num">6</td><td class="num">6</td><td class="num">0.50</td><td class="num">0.86</td></tr>
+        <tr class="ours"><td>ProofScan, verification on</td><td class="num">6</td><td class="num">6</td><td class="num">0</td><td class="num">1.00</td><td class="num">0.86</td></tr>
+        <tr><td>OWASP ZAP 2.17</td><td class="num">7</td><td class="num">6</td><td class="num">1</td><td class="num">0.86</td><td class="num">0.86</td></tr>
+      </table>
+    </div>
+    <p class="note">The same numbers came out of four ProofScan scans and two ZAP
+      scans, six weeks apart. ZAP also checks around a hundred kinds of problem that
+      ProofScan does not, so this is a trade of coverage for certainty, not a claim
+      that ProofScan beats ZAP. Everyone missed DOM-based XSS.</p>
+  </section>
+
+  <section>
+    <h2>The case that shows the idea</h2>
+    <p>On DVWA's CSP page our input comes back in the page completely unescaped.
+      ZAP reports it as <strong>XSS, High risk</strong>. But the page sends a
+      Content-Security-Policy header, so the browser refuses to run the script.
+      ProofScan opened it in a real browser, five payloads ran zero times, and it
+      threw the finding out. Reading the response cannot tell "came back" from
+      "ran". Running it can.</p>
+    <figure>
+      <img src="thrown-out-csp.png" alt="ProofScan's card for DVWA's CSP page: thrown out, none of the 5 payloads ran" loading="lazy">
+      <figcaption>Thrown out: the page looks normal because the script never ran.</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2>Safe by design</h2>
+    <ul>
+      <li>Only scans hosts on an allow-list, with a rate limit on every request.</li>
+      <li>Never submits a form with two password boxes. During the benchmark ZAP
+        did, and changed DVWA's admin password.</li>
+      <li>The web interface refuses anything that is not on the same machine, under
+        the IT Act 2000.</li>
+      <li>This site only replays saved scans of test apps on my own laptop. It
+        cannot scan anything.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Built with</h2>
+    <p>Python, Playwright (headless Chromium), Flask, SQLite and Docker. CVSS v3.1
+      scoring with CWE and OWASP Top 10 mapping, PDF reports, and 183 automated
+      tests.</p>
+  </section>
+</main>
+
+<footer>
+  Built by Abul Kalam Azad as a B.Tech major project (Group 105, School of
+  Electronics Engineering, KIIT), 2026.<br>
+  <a href="https://github.com/Abulkalam1524/proofscan">GitHub</a> &middot;
+  <a href="https://abul-kalam-azad.pages.dev/">Portfolio</a>
+</footer>
+
+</body>
+</html>

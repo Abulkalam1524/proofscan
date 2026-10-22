@@ -23,3 +23,6 @@ reports/benchmark-*.txt
 labs/webgoat/*.jar
 labs/webgoat/.webgoat*/
 labs/webgoat/*.log
+
+# built by showcase/build.py
+showcase/dist/
