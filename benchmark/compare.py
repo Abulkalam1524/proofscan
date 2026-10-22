@@ -5,7 +5,7 @@ counted and printed beside the table, not dropped.
 """
 from dataclasses import dataclass, field
 
-from .zap_report import normalise_path
+from proofscan.zap_report import normalise_path
 
 
 @dataclass(frozen=True)
@@ -133,15 +133,23 @@ def run(scan, zap_alerts, key):
     """The three rows."""
     in_scope = [a for a in zap_alerts if a.kind is not None]
 
+    # a verify scan's stage 1 is ZAP itself, so name the rows for what they are
+    verified_zap = bool(scan.findings) and all(
+        f.evidence.get("source") == "zap" for f in scan.findings)
+    if verified_zap:
+        first = ("ZAP alerts, as reported", "the ZAP alerts verify mode was given", "ZAP in")
+        second = ("ZAP alerts, verified", "only the ZAP alerts ProofScan proved", "verified")
+    else:
+        first = ("ProofScan, verification off", "stage one only, what a scanner that "
+                 "does not check itself would report", "stage 1")
+        second = ("ProofScan, verification on", "only what stage two proved", "verified")
+
     return Comparison(
         key=key,
         zap_other_classes=len(zap_alerts) - len(in_scope),
         tools=[
-            score("ProofScan, verification off", from_detector(scan), key,
-                  "stage one only, what a scanner that does not check itself "
-                  "would report", short="stage 1"),
-            score("ProofScan, verification on", from_confirmed(scan), key,
-                  "only what stage two proved", short="verified"),
+            score(first[0], from_detector(scan), key, first[1], short=first[2]),
+            score(second[0], from_confirmed(scan), key, second[1], short=second[2]),
             score("OWASP ZAP", from_zap(in_scope), key,
                   "active scan, alerts in the two compared classes",
                   short="ZAP"),

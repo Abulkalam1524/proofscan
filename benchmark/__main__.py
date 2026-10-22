@@ -5,9 +5,10 @@
 import argparse
 import sys
 
+from proofscan import zap_report
 from proofscan.store import DEFAULT_PATH, EvidenceStore
 
-from . import answer_keys, compare, zap_report
+from . import answer_keys, compare
 
 
 def main():

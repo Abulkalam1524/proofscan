@@ -16,7 +16,8 @@ import json
 
 import pytest
 
-from benchmark import answer_keys, compare, zap_report
+from benchmark import answer_keys, compare
+from proofscan import zap_report
 from benchmark.answer_keys import DVWA
 from proofscan.crawler import CrawlResult, InjectionPoint
 from proofscan.findings import Finding, Verdict
@@ -459,3 +460,28 @@ def test_regex_excludes_are_single_quoted_in_the_plan():
     for line in plan.splitlines():
         if r"\." in line:
             assert '"' not in line, f"regex in a double quoted scalar: {line}"
+
+
+# --- verify mode scans ----------------------------------------------------------
+
+def test_a_verify_scan_is_labelled_as_zap_alerts(dvwa_scan):
+    """When stage 1 was ZAP, the rows must not claim to be ProofScan's own detector."""
+    for f in dvwa_scan.findings:
+        f.evidence["source"] = "zap"
+    names = [t.tool for t in compare.run(dvwa_scan, [], DVWA).tools]
+    assert names[:2] == ["ZAP alerts, as reported", "ZAP alerts, verified"]
+
+
+def test_a_normal_scan_keeps_its_own_labels(dvwa_scan):
+    names = [t.tool for t in compare.run(dvwa_scan, [], DVWA).tools]
+    assert names[:2] == ["ProofScan, verification off", "ProofScan, verification on"]
+
+
+def test_the_scanner_never_imports_the_benchmark():
+    """The answers live in benchmark/, so nothing in proofscan/ may import from it."""
+    from pathlib import Path
+    root = Path(__file__).parent.parent / "proofscan"
+    offenders = [p.name for p in root.rglob("*.py")
+                 if any(line.strip().startswith(("from benchmark", "import benchmark"))
+                        for line in p.read_text(encoding="utf8").splitlines())]
+    assert not offenders
