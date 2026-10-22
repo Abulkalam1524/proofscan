@@ -74,11 +74,7 @@ def build_auth(args):
 
 
 def sign_in(client, auth):
-    """Log in before anything else, and stop if it did not work.
-
-    Carrying on after a failed login is the worst outcome available. The scan
-    runs, finds nothing behind the login, and reports a clean site.
-    """
+    """Log in first, and stop if it failed. Otherwise the scan reports a clean site."""
     if auth is None:
         return True
 
@@ -91,12 +87,7 @@ def sign_in(client, auth):
 
 
 def print_findings(report):
-    """The three verdict blocks.
-
-    Takes a live scan report or one loaded back out of the evidence store,
-    without knowing which. If the stored copy cannot produce this same output
-    then the store lost something on the way in.
-    """
+    """Print the three verdict groups, for a live or a stored scan."""
     print("CONFIRMED (proved, goes in the report, worst first)")
     for f in report.confirmed:
         print(f"  [{f.kind}] {f.point}")
@@ -282,12 +273,7 @@ def cmd_show(args):
 
 
 def cmd_report(args):
-    """Print a stored scan as a pdf.
-
-    It goes through the store rather than taking a live report, which is the
-    point: a report is a claim about what was proved, so it is made from the
-    evidence that was kept and not from a scan happening at the same time.
-    """
+    """Write a stored scan as a pdf. Always from the store, never a live scan."""
     with EvidenceStore(args.db) as store:
         try:
             scan = store.load(args.id)

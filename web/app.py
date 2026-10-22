@@ -1,27 +1,7 @@
-"""The web interface. One page: scan a target, or replay one already stored.
+"""The web interface: scan a local target, or replay a stored scan.
 
-This exists because the people who have to understand this project read a screen
-better than they read a terminal. The argument the whole thing rests on, that a
-scanner should prove a finding rather than report a suspicion, is much easier to
-see as a green PROVED next to a grey THROWN OUT than as lines of text scrolling
-past.
-
-**Replaying a stored scan is the main path, not an afterthought.** A live scan
-takes a minute on the lab target and nearly three on DVWA, most of it the timing
-validator waiting on purpose, and it needs the target up, Docker started and
-Chromium installed. None of that is safe to rely on in a room on somebody else's
-schedule. Replay reads the evidence file and needs nothing running at all, so
-there is always something to show. That is the evidence store earning its keep a
-second time.
-
-Nothing new is detected here. Every number and every proof on the page comes
-from the scanner, the store and the same `proof_rows` the pdf report uses, so
-the screen cannot disagree with the document.
-
-**The target has to be local.** Scanning a host nobody gave permission for is an
-offence under the IT Act 2000, and a text box on a web page is a much easier way
-to do that by accident than a command line is. So anything that is not loopback
-is refused, and `--allow-any` has to be passed deliberately to lift it.
+Replay needs nothing running, so it is the safe path for a demo. Only local
+targets are allowed unless started with --allow-any (IT Act 2000).
 """
 import threading
 import time
@@ -84,11 +64,7 @@ class Job:
 
 
 def finding_json(finding):
-    """One finding, shaped for the page.
-
-    The proof comes out of the same helpers the pdf uses, so what is on screen
-    and what is in the document are the same sentences.
-    """
+    """One finding shaped for the page, with the same proof rows as the pdf."""
     point, score = finding.point, finding.score
     return {
         "kind": finding.kind,
