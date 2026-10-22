@@ -114,6 +114,12 @@
   li { margin-bottom: 4pt; }
   .cols { column-count: 2; column-gap: 10pt; font-size: 8.5pt; }
   .quiet { color: #6f6f6f; }
+
+  .shots { display: flex; gap: 8pt; margin: 4pt 0 0; break-inside: avoid; }
+  .shots figure { flex: 1; margin: 0; max-width: 60%; }
+  .shots img { width: 100%; border: 0.75pt solid #bbb; }
+  .shots figcaption { font-size: 7.5pt; color: #4a4a4a; margin-top: 2pt;
+                      font-family: Consolas, "Courier New", monospace; word-break: break-all; }
 </style>
 </head>
 <body>
@@ -264,6 +270,15 @@
     {% endfor %}
   </table>
 
+  {% if item.shots %}
+  <div class="label">What the browser showed</div>
+  <div class="shots">
+    {% for label, uri in item.shots %}
+    <figure><img src="{{ uri }}" alt=""><figcaption>{{ label }}</figcaption></figure>
+    {% endfor %}
+  </div>
+  {% endif %}
+
   {% if f.score and f.score.conventional %}
   <div class="caveat"><strong>What this does not prove.</strong> {{ f.score.conventional }}</div>
   {% endif %}
@@ -323,6 +338,13 @@
     <tr><td class="mono">{{ tried }}</td><td>{{ happened }}</td></tr>
     {% endfor %}
   </table>
+  {% endif %}
+  {% if item.shots %}
+  <div class="shots">
+    {% for label, uri in item.shots %}
+    <figure><img src="{{ uri }}" alt=""><figcaption>{{ label }}</figcaption></figure>
+    {% endfor %}
+  </div>
   {% endif %}
 </section>
 {% endfor %}

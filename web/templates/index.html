@@ -122,6 +122,12 @@
   .caveat { margin-top: 12px; background: #f3f5f8; border-left: 3px solid #b8c0cc;
             padding: 10px 12px; font-size: 14px; color: #3d4654; }
   .empty { color: var(--muted); font-style: italic; }
+  .shots { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+           gap: 12px; margin-bottom: 6px; }
+  .shots figure { margin: 0; }
+  .shots img { width: 100%; border: 1px solid var(--line); display: block; }
+  .shots figcaption { font-size: 13px; color: var(--muted); margin-top: 4px;
+                      word-break: break-all; }
   .actions { margin-top: 30px; display: flex; gap: 12px; flex-wrap: wrap; }
   [hidden] { display: none !important; }
 </style>
@@ -272,6 +278,14 @@ function findingCard(f) {
     text: f.verdict === "CONFIRMED" ? "The proof" : "What was tried"}));
 
   const detail = el("div", {class: "detail"});
+  if (f.screenshots.length) {
+    detail.append(el("h4", {text: "What the browser showed"}),
+      el("div", {class: "shots"}, f.screenshots.map(s =>
+        el("figure", {},
+          el("a", {href: `/api/shot/${s.id}`, target: "_blank"},
+            el("img", {src: `/api/shot/${s.id}`, alt: s.label, loading: "lazy"})),
+          el("figcaption", {text: s.label})))));
+  }
   if (f.proof.length) {
     detail.append(el("h4", {text: "The proof"}), proofTable(f.proof));
   }

@@ -30,7 +30,7 @@ from dataclasses import dataclass, field
 from ipaddress import ip_address
 from urllib.parse import urlparse
 
-from flask import Flask, abort, jsonify, render_template, request, send_file
+from flask import Flask, Response, abort, jsonify, render_template, request, send_file
 
 from proofscan.config import Scope
 from proofscan.http_client import HttpClient
@@ -102,6 +102,9 @@ def finding_json(finding):
         "technique": finding.evidence.get("technique"),
         "proof": proof_rows(finding),
         "attempts": attempt_rows(finding),
+        # just the ids, the pictures themselves come from /api/shot
+        "screenshots": [{"id": s["id"], "label": s["label"]}
+                        for s in finding.screenshots if "id" in s],
         "score": None if not score else {
             "cvss": score.cvss_score,
             "severity": score.severity,
@@ -167,6 +170,14 @@ def create_app(db_path=DEFAULT_PATH, allow_any=False):
                 return jsonify(scan_json(s.load(scan_id)))
             except KeyError:
                 abort(404, f"no scan {scan_id} in the evidence file")
+
+    @app.get("/api/shot/<int:shot_id>")
+    def get_shot(shot_id):
+        with store() as s:
+            png = s.screenshot(shot_id)
+        if png is None:
+            abort(404, "no such screenshot")
+        return Response(png, mimetype="image/png")
 
     @app.post("/api/scan")
     def start_scan():

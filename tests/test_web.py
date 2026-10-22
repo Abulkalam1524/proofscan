@@ -219,3 +219,23 @@ def test_the_page_loads_nothing_from_the_internet():
     assert "http://" not in source.replace("http://127.0.0.1:5001", "")
     assert "https://" not in source
     assert "<link" not in source
+
+
+# --- screenshots --------------------------------------------------------------
+
+def test_a_screenshot_is_served_as_a_png(client):
+    with EvidenceStore(client.application.config["DB_PATH"]) as store:
+        finding = browser_confirmed()
+        finding.screenshots = [{"label": "the red box", "png": b"\x89PNG fake"}]
+        scan_id = store.save(report([finding]))
+
+    shots = client.get(f"/api/scan/{scan_id}").get_json()["confirmed"][0]["screenshots"]
+    assert [s["label"] for s in shots] == ["the red box"]
+
+    response = client.get(f"/api/shot/{shots[0]['id']}")
+    assert response.mimetype == "image/png"
+    assert response.data == b"\x89PNG fake"
+
+
+def test_a_screenshot_that_is_not_there_is_a_404(client):
+    assert client.get("/api/shot/999").status_code == 404

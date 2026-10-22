@@ -272,3 +272,13 @@ def test_the_reports_folder_is_made_if_it_is_not_there(tmp_path, chromium):
     path, _ = write_pdf(report(), tmp_path / "new" / "deep" / "out.pdf")
 
     assert path.exists()
+
+
+def test_screenshots_are_inside_the_pdf_itself():
+    """Data uris, so the pdf still has its pictures when it is emailed on."""
+    finding = browser_confirmed()
+    finding.screenshots = [{"label": "the red box", "png": b"\x89PNG fake"}]
+    document = render_html(report([finding]))
+
+    assert "data:image/png;base64," in document
+    assert "the red box" in document

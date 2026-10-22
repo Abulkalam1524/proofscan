@@ -20,6 +20,7 @@ needs GTK on windows and does not install. Chromium is already here for the xss
 validator, and `page.pdf()` is the same renderer that draws the html, so what
 prints is what the browser showed.
 """
+import base64
 from datetime import datetime, timedelta
 from html import escape
 from pathlib import Path
@@ -258,6 +259,12 @@ def limitations(scan):
     return notes
 
 
+def shot_rows(finding):
+    """(label, data uri) for each screenshot, so the pdf carries the pictures itself."""
+    return [(shot["label"], "data:image/png;base64," + base64.b64encode(shot["png"]).decode())
+            for shot in finding.screenshots if shot.get("png")]
+
+
 def build_context(scan, generated_at=None):
     confirmed = scan.confirmed
 
@@ -275,12 +282,14 @@ def build_context(scan, generated_at=None):
             {
                 "finding": finding,
                 "proof_rows": proof_rows(finding),
+                "shots": shot_rows(finding),
                 "advice": ADVICE.get(finding.kind, ""),
             }
             for finding in confirmed
         ],
         "rejected": [
-            {"finding": finding, "attempt_rows": attempt_rows(finding)}
+            {"finding": finding, "attempt_rows": attempt_rows(finding),
+             "shots": shot_rows(finding)}
             for finding in scan.rejected
         ],
         "unconfirmed": scan.unconfirmed,
