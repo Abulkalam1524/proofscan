@@ -57,7 +57,7 @@ whole risk.
 | ZAP benchmark harness | `benchmark/` | Done |
 | Web interface (demo) | `web/` | Done, 22 Oct |
 
-~2,800 lines of scanner and web UI, ~1,900 lines of tests. **171 tests passing**,
+~2,800 lines of scanner and web UI, ~1,900 lines of tests. **183 tests passing**,
 4 skipped when DVWA is down. Suite takes ~80s.
 
 Repo: https://github.com/Abulkalam1524/proofscan (**5 commits unpushed as of
@@ -123,7 +123,7 @@ no such rule.
 |---|---|---|
 | **Dissertation document** | The deliverable | **0 pages** |
 | Broken access control / IDOR | Slide 5, one of three headline techniques | Not built |
-| Screenshot evidence per finding | Slide 3 obj. 5, and slide 5 | Not built |
+| Screenshot evidence per finding | Slide 3 obj. 5, and slide 5 | **Built 22 Oct**, see below |
 | Flask dashboard | Slide 7, tools list | **Built 22 Oct**, `web/`, see section 8 |
 | 4 targets (DVWA, Juice Shop, WebGoat, bWAPP) | Slide 8 | DVWA + own lab only |
 | Final presentation | Viva | Proposal deck only |
@@ -148,8 +148,13 @@ classes and a rushed one.
    numbers above are ready to go. `NOTES.md` is a draft in the wrong register,
    not a blank page.
 2. **Final presentation, 5 h.**
-3. **Screenshots, 3 h.** Chromium is already open during XSS validation.
-   Promised twice in the deck, cheapest credibility win available.
+3. **Screenshots: done 22 Oct.** Proved XSS: the injected script draws a red
+   box and the page is screenshotted (kept only if the box's token comes back).
+   Thrown out XSS: how the browser showed the first payload. True/false SQLi:
+   the true page and the false page side by side. Timing gets no picture.
+   Stored in a `screenshots` table in the same db, shown in the web UI and the
+   PDF. Old scans have none: **scan DVWA again** once Docker is up, so the demo
+   has the CSP and brute force pictures. Scan #6 is a lab scan with pictures.
 4. **Re-run DVWA benchmark 3×, 2 h**, with the change-password page excluded, so
    the Results chapter can say the numbers are stable and the target never moved.
 
@@ -216,7 +221,7 @@ python main.py diff 1 2                           # what changed between scans
 python main.py report 1                           # PDF to reports/
 python main.py web                                # web UI, http://127.0.0.1:8000
 
-pytest -q                                         # 171 tests, ~80s
+pytest -q                                         # 183 tests, ~2 min
 ```
 
 DVWA (Docker Desktop must be started **by hand** first):

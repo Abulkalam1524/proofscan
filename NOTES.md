@@ -554,8 +554,9 @@ serving the old page after an edit. Restart it.
 3. broken access control, or write the scope reduction down deliberately. The
    proposal deck lists it as one of three headline techniques and it does not
    exist. Do not leave that gap for somebody else to notice.
-4. screenshots stored with each proved finding. Promised twice in the deck,
-   about three hours, chromium is already open during xss validation.
+4. ~~screenshots stored with each proved finding~~ done 22 Oct. The red box is
+   drawn by the injected script itself, so the picture shows the code running
+   and not us drawing on the page.
 5. more targets. WebGoat and bWAPP through docker now that docker works. Not
    juice shop, it is an angular spa and the crawler does not run javascript.
    That is a stated limitation, not a bug to fix in the time left.
