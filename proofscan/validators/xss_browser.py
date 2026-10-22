@@ -57,8 +57,7 @@ PAYLOADS = [
 # Same five places as PAYLOADS, same order. Used once, after a proof has
 # worked, to get a picture: the script draws a red box on the page saying what
 # it is, so the screenshot shows the injected code running rather than us
-# drawing on the page. {js} has no spaces or quotes, so it fits in the
-# attribute cases too.
+# drawing on the page. {js} comes from SHOW_STEPS below.
 SHOW_PAYLOADS = [
     "<script>{js}</script>",
     '"><script>{js}</script>',
@@ -91,23 +90,28 @@ def cookies_from(client, base_url):
             for name, value in latest.items()]
 
 
-def _js_text(text):
-    # every character that is not a letter or digit becomes an escape, so the
-    # string survives whatever html context it lands in
-    return "".join(c if c.isascii() and c.isalnum() else "\\u%04x" % ord(c) for c in text)
+# The picture scripts have to get through a lot. No spaces, quotes, < or > (the
+# attribute cases), no backslashes (DVWA strips them from guestbook messages),
+# and short, because DVWA keeps 300 characters of a message and 100 of a name.
+# So the spaces are put back by the script itself, and there is a short version
+# that only turns the page red, for fields too small for the box.
+
+def box_js(token):
+    return (f"{PROOF_VAR}=`{token}`;_b=document.createElement(`h2`);"
+            "_b.textContent=`ProofScan:_this_box_was_drawn_by_injected_code`"
+            ".replace(/_/g,String.fromCharCode(32));"
+            "_b.style.cssText=`background:red;color:#fff;padding:9px`;"
+            "document.body.prepend(_b)")
 
 
-def show_js(token, param):
-    box = (
-        '<div style="position:fixed;top:0;left:0;right:0;z-index:2147483647;'
-        'background:#b00020;color:#fff;font:bold 20px/1.5 Arial,sans-serif;'
-        'padding:14px 20px">'
-        f'ProofScan: this red box was drawn by the script typed into the '
-        f'&quot;{html.escape(param)}&quot; box. The browser ran it. ({token})</div>'
-    )
-    return (f"window.{PROOF_VAR}=`{token}`;"
-            f"(document.body||document.documentElement)"
-            f".insertAdjacentHTML(`beforeend`,`{_js_text(box)}`)")
+def red_page_js(token):
+    return f"{PROOF_VAR}=`{token}`;document.body.style.background=`red`"
+
+
+SHOW_STEPS = [
+    (box_js, "The injected script ran and drew the red box"),
+    (red_page_js, "The injected script ran and turned the page red"),
+]
 
 
 class BrowserProver:
@@ -262,18 +266,18 @@ def picture_of_run(prover, point, index):
     Only kept if the box's own token comes back, so a picture is never of a
     page where nothing ran. Failing to get one never changes the verdict.
     """
-    token = "pf" + secrets.token_hex(8)
-    payload = SHOW_PAYLOADS[index].format(js=show_js(token, point.param))
-    try:
-        ran = prover.ran(point, payload, token, shot=True)
-    except OutOfScopeError:
-        raise
-    except Exception:
-        return None
-    if not ran or not prover.last_shot:
-        return None
-    return {"label": "The injected script ran and drew the red box",
-            "png": prover.last_shot}
+    for make_js, label in SHOW_STEPS:
+        token = "pf" + secrets.token_hex(8)
+        payload = SHOW_PAYLOADS[index].format(js=make_js(token))
+        try:
+            ran = prover.ran(point, payload, token, shot=True)
+        except OutOfScopeError:
+            raise
+        except Exception:
+            continue
+        if ran and prover.last_shot:
+            return {"label": f"{label} ({token})", "png": prover.last_shot}
+    return None
 
 
 def validate(prover, point, reason):

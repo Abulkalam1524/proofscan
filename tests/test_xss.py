@@ -22,7 +22,7 @@ from proofscan.crawler import Crawler          # noqa: E402
 from proofscan.detectors import xss            # noqa: E402
 from proofscan.findings import Verdict         # noqa: E402
 from proofscan.http_client import HttpClient   # noqa: E402
-from proofscan.validators.xss_browser import BrowserProver, show_js, validate  # noqa: E402
+from proofscan.validators.xss_browser import SHOW_PAYLOADS, SHOW_STEPS, BrowserProver, validate  # noqa: E402
 
 BASE = "http://127.0.0.1:5001"
 
@@ -117,11 +117,16 @@ def test_attribute_context_needs_a_breakout(results):
         "expected an attribute breakout payload to be the one that worked"
 
 
-def test_the_red_box_script_fits_an_attribute():
-    """No spaces or quotes, or the onerror and onfocus versions break."""
-    js = show_js("pf0123456789abcdef", 'q"><b>')
-    for bad in " \"'<>":
-        assert bad not in js
+def test_the_picture_scripts_survive_dvwa():
+    """No spaces or quotes for the attribute cases, no backslashes because DVWA
+    strips them, and short enough for its 300 and 100 character columns."""
+    token = "pf0123456789abcdef"
+    for make_js, _ in SHOW_STEPS:
+        for bad in " \"'<>\\":
+            assert bad not in make_js(token)
+    box, red = (make_js(token) for make_js, _ in SHOW_STEPS)
+    assert max(len(p.format(js=box)) for p in SHOW_PAYLOADS) < 300
+    assert max(len(p.format(js=red)) for p in SHOW_PAYLOADS) < 100
 
 
 def test_every_proved_xss_has_a_picture(results):
