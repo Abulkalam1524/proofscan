@@ -1,15 +1,7 @@
-"""Read an OWASP ZAP json report and pull out the alerts worth comparing.
+"""Read a ZAP json report into one alert per url and parameter, like ProofScan.
 
-ZAP reports one alert per rule with a list of instances under it, and the
-instance is the part that names a url and a parameter, which is the level
-ProofScan works at. So one ZAP alert covering four parameters becomes four
-comparable alerts here, deduplicated, the same way ProofScan reports one finding
-per injection point.
-
-Classes are decided by CWE id rather than by the alert's name. ZAP has several
-rules that all mean sql injection ("SQL Injection", "SQL Injection - MySQL",
-"SQL Injection - Hypersonic SQL") and matching on names would mean chasing that
-list forever. CWE-89 and CWE-79 do not move.
+Classes are matched by CWE (89 and 79), not by name, because ZAP has
+several differently named SQL injection rules.
 """
 import json
 from dataclasses import dataclass
@@ -25,12 +17,7 @@ CONFIDENCES = {"0": "False Positive", "1": "Low", "2": "Medium", "3": "High",
 
 
 def normalise_path(url):
-    """Just the path, lower case, no trailing slash, no query.
-
-    Both tools have to be reduced to the same shape before anything can be
-    matched. ZAP reports the full uri with the query still on it, ProofScan
-    stores the url without one, and DVWA is inconsistent about trailing slashes.
-    """
+    """Lower case path, no query, no trailing slash, so both tools' urls match."""
     path = urlparse(url).path.lower()
     path = path.rstrip("/")
     return path or "/"
@@ -61,12 +48,9 @@ def _alerts_in(site):
 
 
 def parse(path_or_text):
-    """Every instance in a ZAP json report, as a flat list of ZapAlert.
+    """Every instance in a ZAP report as a flat list. Takes a path or the json text.
 
-    Takes a path or the json text itself. Instances with no parameter are kept
-    with an empty param: a lot of ZAP's rules are about the page rather than one
-    input, and dropping them here would quietly shrink the number of alerts ZAP
-    is credited with.
+    Instances with no parameter are kept, with an empty param.
     """
     text = path_or_text
     try:
@@ -124,10 +108,5 @@ def in_scope(alerts):
 
 
 def out_of_scope(alerts):
-    """Everything else ZAP said.
-
-    Counted and reported rather than thrown away. ZAP looks for roughly a
-    hundred classes and ProofScan looks for two, and a comparison that hides
-    that is dishonest in ProofScan's favour.
-    """
+    """Everything else ZAP reported. Counted, not thrown away."""
     return [a for a in alerts if a.kind is None]

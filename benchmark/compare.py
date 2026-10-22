@@ -1,23 +1,7 @@
-"""Score ProofScan and ZAP against the same answer key, the same way.
+"""Score ProofScan (verification off and on) and ZAP against one answer key.
 
-Three rows, because two of them are the argument:
-
-1. ProofScan with verification off. Only what stage one flagged. This is what
-   the tool would be if it behaved like a normal scanner, and it is the honest
-   baseline to improve on rather than a strawman, because it is the same
-   detector.
-2. ProofScan with verification on. Only what stage two could prove.
-3. OWASP ZAP.
-
-Row one against row two is the whole project in one table. Row two against row
-three is how it compares to the tool people actually use.
-
-**Only SQL injection and cross site scripting are scored.** ZAP looks for around
-a hundred classes and ProofScan v1 looks for two, so comparing total alert
-counts would say nothing except that ZAP has more rules, which nobody is
-disputing. What ZAP found outside those two classes is counted and printed
-beside the table instead of being quietly dropped, because that difference in
-coverage is real and belongs in the write up.
+Only SQL injection and XSS are scored. ZAP's alerts in other classes are
+counted and printed beside the table, not dropped.
 """
 from dataclasses import dataclass, field
 
@@ -126,12 +110,7 @@ def from_zap(alerts):
 
 
 def from_detector(scan):
-    """What ProofScan's stage one flagged, before anything was verified.
-
-    Findings the detector never saw are excluded, which is the point: the blind
-    injection is invisible to stage one and crediting the unverified baseline
-    with it would understate what verification adds.
-    """
+    """What stage 1 flagged, before verification. Blind finds it never saw are left out."""
     return [
         Reported(kind=f.kind, path=normalise_path(f.point.url),
                  param=f.point.param,
@@ -202,10 +181,7 @@ def format_table(comparison):
 
 
 def format_matrix(comparison):
-    """Every entry in the answer key, and what each tool said about it.
-
-    The table above is the result. This is the part somebody checks it against.
-    """
+    """Every entry in the answer key, and what each tool said about it."""
     columns = [t.short for t in comparison.tools]
     said = [{r.key for r in t.reported} for t in comparison.tools]
 

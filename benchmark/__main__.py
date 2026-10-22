@@ -1,14 +1,6 @@
 """Score a stored ProofScan scan and a ZAP report against the same answer key.
 
     python -m benchmark --scan 3 --zap reports/zap-dvwa.json --key dvwa
-
-Its own entry point rather than a subcommand of main.py, so that the scanner
-never imports the answers even by accident. ProofScan reads the target. This
-reads ProofScan.
-
-Both sides come out of a file. The ProofScan side is a stored scan, so the
-numbers in the comparison are the numbers that were recorded at the time and
-not whatever a fresh run happens to produce today.
 """
 import argparse
 import sys

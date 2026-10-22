@@ -1,5 +1,4 @@
-"""Benchmark harness. Scores ProofScan and other scanners against a known answer key.
+"""Scores ProofScan and ZAP against a known answer key.
 
-Deliberately outside the proofscan package: nothing being measured should be
-able to import the answers.
+Kept outside the proofscan package so the scanner can never import the answers.
 """

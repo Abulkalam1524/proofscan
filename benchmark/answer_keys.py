@@ -1,26 +1,7 @@
-"""Ground truth. What is actually wrong with each benchmark target.
+"""What is really wrong with each benchmark target, written by hand from its docs and source.
 
-A comparison between two scanners is only worth something if somebody already
-knows the right answer. Otherwise "ZAP found 41 things and ProofScan found 6" is
-not a result, it is two numbers.
-
-So each target gets an answer key written by hand from the target's own
-documentation and source, and both tools are scored against it the same way.
-The key is deliberately kept separate from the scanner: nothing in `proofscan/`
-imports this, so there is no way for the tool being measured to see the answers.
-
-Two kinds of entry:
-
-- `real=True`  a genuine vulnerability of that class, at that place. A tool that
-               misses it has a false negative.
-- `real=False` a documented trap. Something that looks like that class and is
-               not one. A tool that reports it has a false positive, and these
-               are the interesting ones, because they are where scanners
-               normally fail.
-
-Anything a tool reports that is not in the key at all is counted as a false
-alarm and listed separately for checking by hand, because an answer key written
-by a person is never complete and pretending otherwise is how benchmarks lie.
+real=True is a bug a tool should find. real=False is a trap that looks like one
+and is not. Anything reported that is not in the key counts as a false alarm.
 """
 from dataclasses import dataclass
 
@@ -59,15 +40,9 @@ class AnswerKey:
         return None
 
 
-# DVWA at security level low. Written from DVWA's own source and its published
-# description of each module, not from what ProofScan reported, which would make
-# the whole exercise circular.
-#
-# Only SQL injection and cross site scripting appear here. DVWA also ships
-# command injection, file inclusion, csrf, file upload, weak session ids and an
-# open redirect. Those are real vulnerabilities and neither tool is scored on
-# them, because ProofScan v1 does not look for them. They are what the "outside
-# the compared classes" line in the results is for.
+# DVWA at security level low, written from DVWA's source and docs, not from
+# what ProofScan reported. Only SQL injection and XSS are listed, because v1
+# looks for nothing else.
 DVWA = AnswerKey(
     name="DVWA",
     description="DVWA, ghcr.io/digininja/dvwa:latest, security level low",
@@ -112,14 +87,8 @@ DVWA = AnswerKey(
 )
 
 
-# The lab target in labs/vulnerable_app. Written from the app's source and its
-# own ANSWER_KEY dict, broken down per parameter, which the benchmark needs and
-# that dict does not carry.
-#
-# Weaker evidence than DVWA and it should be reported as such: the app was
-# written by the same person as the scanner, so it cannot show that ProofScan
-# generalises. What it can show is both tools meeting the same traps, and the
-# traps here were planted precisely because they are the ones scanners fall for.
+# The lab target in labs/vulnerable_app, per parameter. Weaker evidence than
+# DVWA, because the same person wrote the app and the scanner.
 LAB = AnswerKey(
     name="lab",
     description="ProofScan lab target, labs/vulnerable_app, on 127.0.0.1:5001",
@@ -170,11 +139,8 @@ LAB = AnswerKey(
     ],
 )
 
-# /login also prints its sqlite error unescaped, the same way /product does, so
-# it may well be injectable for cross site scripting too. The app's ANSWER_KEY
-# says it is not and ProofScan has never confirmed it, so it is deliberately not
-# listed here either way. Anything that reports it comes out under "reported but
-# not in the answer key" for checking by hand, which is what that bucket is for.
+# /login may also have XSS through its sqlite error, but the app's own key
+# says no and it was never confirmed, so it is left out either way.
 
 KEYS = {"dvwa": DVWA, "lab": LAB}
 
