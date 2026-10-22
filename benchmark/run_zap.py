@@ -182,11 +182,15 @@ def main():
     plan_path.write_text(plan, encoding="utf-8")
     print(f"plan written to {plan_path}")
 
-    command = ["docker", "run", "--rm",
+    # Without limits ZAP's java grows through the active scan until Windows runs
+    # out of memory and Docker's VM dies with it, which happened twice on a
+    # 16 GB laptop. 2 GB of heap is plenty for DVWA, and the container cap means
+    # that if it ever is not, ZAP is stopped rather than all of Docker.
+    command = ["docker", "run", "--rm", "--memory", "3g",
                "-v", f"{out.parent.as_posix()}:/zap/wrk:rw"]
     if args.network:
         command += ["--network", args.network]
-    command += [ZAP_IMAGE, "zap.sh", "-cmd",
+    command += [ZAP_IMAGE, "zap.sh", "-Xmx2g", "-cmd",
                 "-autorun", f"/zap/wrk/{plan_path.name}"]
 
     print(" ".join(command), flush=True)
