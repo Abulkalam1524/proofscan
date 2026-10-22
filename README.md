@@ -21,14 +21,131 @@ report, along with the request and response that proves it.
 that is always false. If the two responses come back different, the database
 actually evaluated the input.
 
-**SQL injection, timing test.** Compare the median of n normal responses against
-n delayed ones. One slow reply proves nothing, a consistent gap does.
+**SQL injection, timing test.** Send two inputs that both carry a delay, one
+behind a true condition and one behind a false one, ten times each. One slow
+reply proves nothing. It is confirmed only if the true side is slower every
+single time.
 
 **XSS.** Load the page in a headless browser and check whether the injected
 script actually executed. Reflection on its own is not enough.
 
 Every finding ends up as CONFIRMED, UNCONFIRMED (could not prove it safely), or
 REJECTED (proved it is not there).
+
+## Architecture overview
+
+A scan runs top to bottom. Stage 1 is quick and flags anything suspicious.
+Stage 2 tries to prove each one, and only what it proves is scored. Everything,
+including what was thrown out and why, is saved, and the report, the web
+interface and the ZAP benchmark all read from that saved copy. Every request to
+the target goes through the safety rules on the right.
+
+```mermaid
+flowchart TB
+    subgraph START["1. Start a scan"]
+        direction LR
+        CLI["💻 Command line<br/>python main.py scan"]
+        WEB["🖥️ Web interface<br/>python main.py web"]
+    end
+
+    subgraph DISCOVER["2. Discovery"]
+        AUTH["🔑 Login and session recovery<br/>auth.py"]
+        CRAWL["🕸️ Crawler<br/>crawler.py"]
+        POINTS["📋 Injection points<br/>form fields and URL parameters"]
+    end
+
+    subgraph STAGE1["3. Stage 1: Detection (fast, noisy on purpose)"]
+        direction LR
+        DSQL["SQL injection detector<br/>detectors/sqli.py"]
+        DXSS["XSS detector<br/>detectors/xss.py"]
+    end
+
+    subgraph STAGE2["4. Stage 2: Verification (the proof)"]
+        direction LR
+        VBOOL["⚖️ True/false test<br/>sqli_boolean.py"]
+        VTIME["⏱️ Timing test<br/>sqli_timing.py"]
+        VBROW["🌐 Real browser test<br/>headless Chromium<br/>xss_browser.py"]
+    end
+
+    subgraph VERDICTS["5. Verdict"]
+        direction LR
+        CONF["✅ CONFIRMED<br/>proved real"]
+        UNC["❔ UNCONFIRMED<br/>could not prove either way"]
+        REJ["❌ REJECTED<br/>false alarm, removed"]
+    end
+
+    subgraph SAFETY["Safety rules, on every request"]
+        SCOPE["🛡️ Scope allow-list · rate limit<br/>pages to avoid · no password forms<br/>config.py, http_client.py"]
+    end
+
+    TARGET{{"🎯 Target website<br/>DVWA or the lab app<br/>local only"}}
+
+    subgraph STORE["6. Storage"]
+        SCORE["📊 CVSS v3.1 · CWE · OWASP<br/>scoring.py"]
+        DB[("🗄️ SQLite evidence store<br/>scans · findings<br/>proofs · screenshots")]
+    end
+
+    subgraph OUTPUT["7. Results"]
+        direction LR
+        PDF["📄 PDF report<br/>report.py"]
+        UI["🖥️ Web UI replay<br/>web/app.py"]
+        BENCH["📈 Benchmark vs OWASP ZAP<br/>benchmark/"]
+    end
+
+    ZAP["🔍 OWASP ZAP<br/>Docker"]
+
+    CLI -->|"1. Start scan"| AUTH
+    WEB -->|"1. Start scan"| AUTH
+    AUTH -->|"2. Log in"| CRAWL
+    CRAWL -->|"3. Find forms and links"| POINTS
+    POINTS -->|"4. Quick checks"| DSQL
+    POINTS -->|"4. Quick checks"| DXSS
+    DSQL -->|"5. Suspicious"| VBOOL
+    POINTS -.->|"5. Every point, for blind SQLi"| VTIME
+    DXSS -->|"5. Suspicious"| VBROW
+    VBOOL -->|"6. Result"| VERDICTS
+    VTIME -->|"6. Result"| VERDICTS
+    VBROW -->|"6. Result"| VERDICTS
+    CONF -->|"7. Score"| SCORE
+    SCORE -->|"8. Save with proof"| DB
+    UNC -->|"8. Save"| DB
+    REJ -->|"8. Save, with what was tried"| DB
+    DB -->|"9. Read back"| PDF
+    DB -->|"9. Read back"| UI
+    DB -->|"9. Read back"| BENCH
+    ZAP -->|"Same target, same session"| BENCH
+
+    DISCOVER -.->|"requests"| SCOPE
+    STAGE1 -.->|"requests"| SCOPE
+    STAGE2 -.->|"requests"| SCOPE
+    SCOPE <-.->|"in scope only, rate limited"| TARGET
+
+    classDef start fill:#2563eb,stroke:#1e40af,color:#fff
+    classDef discover fill:#0891b2,stroke:#0e7490,color:#fff
+    classDef stage1 fill:#f59e0b,stroke:#b45309,color:#111
+    classDef stage2 fill:#10b981,stroke:#047857,color:#fff
+    classDef good fill:#16a34a,stroke:#14532d,color:#fff
+    classDef unsure fill:#6b7280,stroke:#374151,color:#fff
+    classDef bad fill:#dc2626,stroke:#7f1d1d,color:#fff
+    classDef safety fill:#374151,stroke:#f59e0b,color:#fff,stroke-width:2px
+    classDef target fill:#111827,stroke:#ef4444,color:#fff,stroke-width:2px
+    classDef store fill:#7c3aed,stroke:#5b21b6,color:#fff
+    classDef output fill:#be123c,stroke:#881337,color:#fff
+    classDef zap fill:#4b5563,stroke:#9ca3af,color:#fff
+
+    class CLI,WEB start
+    class AUTH,CRAWL,POINTS discover
+    class DSQL,DXSS stage1
+    class VBOOL,VTIME,VBROW stage2
+    class CONF good
+    class UNC unsure
+    class REJ bad
+    class SCOPE safety
+    class TARGET target
+    class SCORE,DB store
+    class PDF,UI,BENCH output
+    class ZAP zap
+```
 
 ## Status
 
@@ -44,7 +161,9 @@ Phase 1, in progress.
 - [x] cvss v3.1 scoring, cwe and owasp mapping
 - [x] evidence store
 - [x] pdf report
-- [ ] benchmark against zap
+- [x] benchmark against zap
+- [x] web interface
+- [x] screenshot evidence
 
 ## Setup
 
@@ -121,7 +240,7 @@ Binds to 127.0.0.1 only.
 
 The scanner refuses any host not on the allow list, rate limits every request
 and only sends non destructive input. All testing here is against local apps
-built to be tested: the target above, plus DVWA, Juice Shop and WebGoat.
+built to be tested: the target above, plus DVWA.
 
 Scanning a system without permission is an offence under the IT Act, 2000.
 
