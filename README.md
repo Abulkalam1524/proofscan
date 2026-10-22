@@ -4,6 +4,8 @@ Automated website security testing with self verification and report generation.
 
 B.Tech major project, Group 105, School of Electronics Engineering, KIIT.
 
+**Live demo: [proofscan.pages.dev](https://proofscan.pages.dev)** (replays real saved scans, cannot scan anything)
+
 ![ProofScan replaying a scan of DVWA: 12 suspicious, 6 proved, 6 thrown out](docs/images/demo.gif)
 
 ## The problem

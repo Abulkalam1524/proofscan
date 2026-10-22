@@ -1,7 +1,8 @@
 # Builds the static showcase into showcase/dist: a landing page and a replay-only
 # copy of the web UI, reading saved files instead of a server. Nothing in it can scan.
 #   python showcase/build.py
-#   npx wrangler pages deploy showcase/dist --project-name proofscan
+#   npx wrangler pages deploy showcase/dist --project-name proofscan --branch main
+# live at https://proofscan.pages.dev
 
 import json
 import shutil
