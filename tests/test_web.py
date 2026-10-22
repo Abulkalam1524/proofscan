@@ -239,3 +239,21 @@ def test_a_screenshot_is_served_as_a_png(client):
 
 def test_a_screenshot_that_is_not_there_is_a_404(client):
     assert client.get("/api/shot/999").status_code == 404
+
+
+# --- the static showcase ------------------------------------------------------
+
+def test_the_showcase_page_cannot_scan():
+    """The replay-only copy must have no scan panel and no live server calls."""
+    page = create_app().jinja_env.get_template("index.html").render(showcase=True)
+
+    assert 'id="scan"' not in page
+    assert "/api/" not in page
+    assert "data/scans.json" in page
+
+
+def test_the_live_page_still_scans():
+    page = create_app().jinja_env.get_template("index.html").render(allow_any=False)
+
+    assert 'id="scan"' in page
+    assert '"/api/scans"' in page

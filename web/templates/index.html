@@ -122,6 +122,8 @@
   .caveat { margin-top: 12px; background: #f3f5f8; border-left: 3px solid #b8c0cc;
             padding: 10px 12px; font-size: 14px; color: #3d4654; }
   .empty { color: var(--muted); font-style: italic; }
+  .showcase-note { font-size: 15px; opacity: .9; }
+  .showcase-note a { color: inherit; }
   .shots { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
            gap: 12px; margin-bottom: 6px; }
   .shots figure { margin: 0; }
@@ -137,6 +139,8 @@
 <header>
   <h1>ProofScan</h1>
   <p>Finds website vulnerabilities, then proves each one is real.</p>
+  {% if showcase %}<p class="showcase-note">A replay of real saved scans. This
+    page cannot scan anything. <a href="index.html">About the project</a></p>{% endif %}
 </header>
 
 <main>
@@ -151,6 +155,7 @@
       </div>
     </div>
 
+    {% if not showcase %}
     <div class="panel">
       <h2>Scan a target now</h2>
       <p class="hint">Takes about a minute. {% if not allow_any %}Local targets
@@ -165,6 +170,7 @@
           Safe mode (skip the slow timing tests)</label>
       </div>
     </div>
+    {% endif %}
   </div>
 
   <div id="notice" class="notice" hidden></div>
@@ -201,6 +207,23 @@ function el(tag, props, ...children) {
 
 const $ = id => document.getElementById(id);
 
+// where the data comes from. the static showcase reads saved files instead.
+{% if showcase %}
+const URLS = {
+  scans: "data/scans.json",
+  scan: id => `data/scan-${id}.json`,
+  shot: id => `shots/${id}.png`,
+  report: id => `reports/scan-${id}.pdf`,
+};
+{% else %}
+const URLS = {
+  scans: "/api/scans",
+  scan: id => `/api/scan/${id}`,
+  shot: id => `/api/shot/${id}`,
+  report: id => `/api/report/${id}`,
+};
+{% endif %}
+
 // Said in plain words, because the people watching are not security people.
 const KINDS = {
   sqli: ["SQL injection", "the website's database ran something we typed"],
@@ -220,7 +243,7 @@ async function getJSON(url, options) {
 }
 
 async function loadSaved(selectId) {
-  const scans = await getJSON("/api/scans");
+  const scans = await getJSON(URLS.scans);
   const select = $("saved");
   select.replaceChildren();
   if (!scans.length) {
@@ -282,8 +305,8 @@ function findingCard(f) {
     detail.append(el("h4", {text: "What the browser showed"}),
       el("div", {class: "shots"}, f.screenshots.map(s =>
         el("figure", {},
-          el("a", {href: `/api/shot/${s.id}`, target: "_blank"},
-            el("img", {src: `/api/shot/${s.id}`, alt: s.label, loading: "lazy"})),
+          el("a", {href: URLS.shot(s.id), target: "_blank"},
+            el("img", {src: URLS.shot(s.id), alt: s.label, loading: "lazy"})),
           el("figcaption", {text: s.label})))));
   }
   if (f.proof.length) {
@@ -371,7 +394,7 @@ function render(scan) {
       scan.rejected, "REJECTED"),
 
     el("div", {class: "actions"},
-      el("a", {href: `/api/report/${scan.id}`},
+      el("a", {href: URLS.report(scan.id)},
         el("button", {text: "Download the PDF report"}))));
 
   results.hidden = false;
@@ -380,11 +403,12 @@ function render(scan) {
 
 async function showScan(id) {
   notice("");
-  render(await getJSON(`/api/scan/${id}`));
+  render(await getJSON(URLS.scan(id)));
 }
 
 $("load").addEventListener("click", () => showScan($("saved").value).catch(e => notice(e.message)));
 
+{% if not showcase %}
 $("scan").addEventListener("click", async () => {
   notice("");
   $("results").hidden = true;
@@ -418,7 +442,15 @@ $("scan").addEventListener("click", async () => {
   }
 });
 
+{% endif %}
+
+{% if showcase %}
+// open the first saved scan straight away, without jumping down the page
+loadSaved().then(() => showScan($("saved").value)).then(() => scrollTo(0, 0))
+  .catch(e => notice(e.message));
+{% else %}
 loadSaved().catch(e => notice(e.message));
+{% endif %}
 </script>
 </body>
 </html>
